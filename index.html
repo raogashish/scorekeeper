@@ -1,0 +1,3433 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Scorekeeper" />
+  <meta name="theme-color" content="#f7f4ef" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <title>Card Game Scorekeeper</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("scoutTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    html { min-height: 100%; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background: var(--cp-bg);
+      color: var(--cp-text);
+      font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before, body::after {
+      position: fixed;
+      z-index: -1;
+      color: var(--cp-accent);
+      font-size: clamp(120px, 20vw, 240px);
+      opacity: 0.035;
+      pointer-events: none;
+      animation: float-suit 9s ease-in-out infinite;
+    }
+    body::before { top: 8%; left: -4%; content: "♥"; }
+    body::after { right: -3%; bottom: 5%; content: "♠"; animation-delay: -4s; }
+    button, input { font: inherit; }
+    button { touch-action: manipulation; }
+    .app {
+      width: min(1180px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+        max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      display: grid;
+      width: 48px;
+      height: 48px;
+      padding: 0;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 14px;
+      background: var(--cp-accent);
+      color: var(--cp-accent-fg);
+      font-size: 24px;
+      font-weight: 800;
+      box-shadow: 0 0 2px var(--cp-border), 0 1px 2px var(--cp-border-strong);
+      animation: logo-arrive 650ms cubic-bezier(.2,.8,.2,1) both;
+    }
+    .brand-mark img { width: 100%; height: 100%; object-fit: cover; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 2px; font-size: clamp(22px, 4vw, 30px); letter-spacing: -0.03em; }
+    h2 { margin-bottom: 8px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -0.035em; }
+    h3 { margin-bottom: 12px; font-size: 18px; }
+    .muted { color: var(--cp-text-muted); }
+    .small { font-size: 13px; }
+    .card {
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      box-shadow: 0 0 2px var(--cp-border), 0 1px 2px var(--cp-border);
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    }
+    .setup-card {
+      width: min(680px, 100%);
+      margin: 7vh auto 0;
+      padding: clamp(24px, 5vw, 48px);
+    }
+    .step {
+      margin-bottom: 10px;
+      color: var(--cp-accent);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .field { display: grid; gap: 8px; margin-top: 20px; }
+    label { color: var(--cp-text-muted); font-size: 14px; font-weight: 700; }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      min-height: 52px;
+      padding: 12px 14px;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 0.625rem;
+      outline: none;
+      background: var(--cp-bg-elevated);
+      color: var(--cp-text);
+      font-size: 18px;
+    }
+    input:focus { border-color: var(--cp-accent); box-shadow: 0 0 0 3px var(--cp-accent-soft); }
+    .name-fields { display: grid; gap: 12px; margin-top: 20px; }
+    .setup-player {
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr);
+      align-items: center;
+      gap: 14px;
+      padding: 14px;
+      animation: card-arrive 420ms cubic-bezier(.2,.8,.2,1) both;
+      animation-delay: var(--delay);
+    }
+    .setup-player .field { margin-top: 0; }
+    .drag-handle {
+      display: grid;
+      min-width: 54px;
+      min-height: 54px;
+      padding: 7px;
+      place-items: center;
+      gap: 2px;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface-soft);
+      color: var(--cp-text-muted);
+      cursor: grab;
+      font-size: 22px;
+      font-weight: 900;
+      touch-action: none;
+      user-select: none;
+    }
+    .drag-handle span {
+      font-size: 10px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .drag-handle:active { cursor: grabbing; }
+    .reorder-item { transition: border-color 160ms ease, opacity 160ms ease, transform 160ms ease; }
+    .reorder-item.dragging { opacity: 0.55; transform: scale(0.985); }
+    .reorder-item.drop-target { border-color: var(--cp-accent); box-shadow: 0 0 0 3px var(--cp-accent-soft); }
+    .avatar-stack { display: grid; justify-items: center; gap: 6px; }
+    .avatar-button {
+      display: grid;
+      width: 58px;
+      height: 58px;
+      padding: 0;
+      place-items: center;
+      overflow: hidden;
+      border: 2px solid var(--cp-border);
+      border-radius: 50%;
+      background: var(--cp-accent-soft);
+      color: var(--cp-text);
+      cursor: pointer;
+      font-size: 30px;
+      transition: transform 180ms ease, border-color 180ms ease;
+    }
+    .avatar-button:hover { border-color: var(--cp-accent); transform: rotate(-4deg) scale(1.05); }
+    .avatar {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--cp-border);
+      border-radius: 50%;
+      background: var(--cp-accent-soft);
+      font-size: 23px;
+    }
+    .avatar-large { width: 64px; height: 64px; flex-basis: 64px; font-size: 35px; }
+    .avatar img, .avatar-button img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-label { color: var(--cp-link); cursor: pointer; font-size: 12px; font-weight: 750; }
+    .photo-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    .btn {
+      min-height: 48px;
+      padding: 10px 18px;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      cursor: pointer;
+      font-weight: 750;
+      transition: transform 120ms ease, background 180ms ease, border-color 180ms ease;
+    }
+    .btn:hover { border-color: var(--cp-border-strong); }
+    .btn-primary { border-color: var(--cp-accent); background: var(--cp-accent); color: var(--cp-accent-fg); }
+    .btn-primary:hover { border-color: var(--cp-accent-hover); background: var(--cp-accent-hover); }
+    .btn-danger { color: var(--cp-danger); }
+    .btn:disabled { cursor: not-allowed; opacity: 0.48; }
+    .btn:not(:disabled):active, .stepper button:active, .andhi-toggle:active { transform: scale(0.96); }
+    .btn-wide { flex: 1; }
+    .game-shell { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; }
+    .main-panel { min-width: 0; }
+    .game-header { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .phase-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--cp-accent-soft);
+      color: var(--cp-accent);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .player-list { display: grid; gap: 12px; }
+    .player-row {
+      display: grid;
+      grid-template-columns: minmax(130px, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      animation: card-arrive 380ms cubic-bezier(.2,.8,.2,1) both;
+      animation-delay: var(--delay);
+    }
+    .player-identity { display: flex; min-width: 0; align-items: center; gap: 12px; }
+    .player-name { overflow: hidden; font-size: 18px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .player-sub { margin-top: 3px; color: var(--cp-text-muted); font-size: 13px; }
+    .score-controls { display: flex; align-items: center; gap: 8px; }
+    .stepper {
+      display: grid;
+      grid-template-columns: 44px 64px 44px;
+      align-items: center;
+      min-height: 48px;
+      overflow: hidden;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 0.625rem;
+      background: var(--cp-bg-elevated);
+    }
+    .stepper button {
+      height: 48px;
+      border: 0;
+      background: var(--cp-surface-soft);
+      color: var(--cp-text);
+      cursor: pointer;
+      font-size: 24px;
+    }
+    .stepper button:disabled, .stepper input:disabled {
+      background: var(--cp-surface-soft);
+      color: var(--cp-text-muted);
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+    .stepper input[type="number"] {
+      width: 64px;
+      min-height: 48px;
+      padding: 0 4px;
+      border: 0;
+      border-radius: 0;
+      background: var(--cp-bg-elevated);
+      box-shadow: none;
+      text-align: center;
+      font-size: 20px;
+      font-weight: 800;
+      -moz-appearance: textfield;
+    }
+    .stepper input::-webkit-inner-spin-button,
+    .stepper input::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
+    .andhi-toggle {
+      min-width: 76px;
+      min-height: 48px;
+      padding: 8px 12px;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-text-muted);
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .andhi-toggle.active { border-color: var(--cp-accent); background: var(--cp-accent-soft); color: var(--cp-accent); }
+    .preview {
+      min-width: 68px;
+      padding: 8px;
+      border-radius: 0.625rem;
+      background: var(--cp-surface-soft);
+      text-align: center;
+      font-size: 18px;
+      font-weight: 900;
+    }
+    .positive { color: var(--cp-success); }
+    .negative { color: var(--cp-danger); }
+    .sidebar { display: grid; align-content: start; gap: 16px; }
+    .leaderboard { padding: 18px; }
+    .leader-row {
+      display: grid;
+      grid-template-columns: 34px 36px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--cp-border);
+      animation: slide-in 320ms ease both;
+      animation-delay: var(--delay);
+    }
+    .leader-row:last-child { border-bottom: 0; }
+    .rank {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--cp-surface-soft);
+      color: var(--cp-text-muted);
+      font-weight: 800;
+    }
+    .leader-row:first-of-type .rank { background: var(--cp-accent); color: var(--cp-accent-fg); }
+    .leader-name { overflow: hidden; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+    .leader-score { font-family: Consolas, "Courier New", Courier, monospace; font-size: 18px; font-weight: 900; }
+    .rules { padding: 18px; color: var(--cp-text-muted); font-size: 14px; line-height: 1.55; }
+    .rules strong { color: var(--cp-text); }
+    .history { margin-top: 20px; padding: 18px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid var(--cp-border); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--cp-text-muted); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .empty { padding: 28px; color: var(--cp-text-muted); text-align: center; }
+    .banner {
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--cp-warning);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      line-height: 1.4;
+    }
+    .winner {
+      padding: clamp(24px, 5vw, 44px);
+      text-align: center;
+    }
+    .trophy { margin-bottom: 12px; font-size: 54px; animation: winner-pop 700ms cubic-bezier(.2,.9,.2,1.2) both; }
+    .winner-celebration {
+      position: relative;
+      display: flex;
+      min-height: 190px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 18px;
+      margin: 16px auto 8px;
+      isolation: isolate;
+    }
+    .winner-celebration::before {
+      position: absolute;
+      z-index: -1;
+      width: 180px;
+      height: 180px;
+      border: 2px solid var(--cp-accent);
+      border-radius: 50%;
+      background: var(--cp-accent-soft);
+      content: "";
+      animation: winner-halo 1.4s ease-in-out infinite alternate;
+    }
+    .winner-dancer-shell {
+      animation: winner-avatar-enter 720ms cubic-bezier(.18,.9,.25,1.35) both;
+      animation-delay: var(--delay);
+    }
+    .winner-dancer {
+      position: relative;
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      transform-origin: center bottom;
+      animation: winner-dance 760ms ease-in-out 820ms 4 alternate;
+    }
+    .winner-avatar {
+      width: 112px;
+      height: 112px;
+      flex-basis: 112px;
+      border: 4px solid var(--cp-accent);
+      background: var(--cp-surface);
+      box-shadow: 0 0 0 8px var(--cp-accent-soft), var(--cp-shadow);
+      font-size: 62px;
+    }
+    .winner-dancer strong {
+      max-width: 150px;
+      overflow: hidden;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--cp-accent);
+      color: var(--cp-accent-fg);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .winner-crown {
+      position: absolute;
+      z-index: 2;
+      top: -40px;
+      font-size: 42px;
+      filter: drop-shadow(0 4px 2px var(--cp-accent-soft));
+      animation: crown-bob 650ms ease-in-out infinite alternate;
+    }
+    .winner-suit {
+      position: absolute;
+      display: grid;
+      width: 42px;
+      height: 54px;
+      place-items: center;
+      border: 1px solid var(--cp-border);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-accent);
+      box-shadow: 0 0 2px var(--cp-border);
+      font-size: 24px;
+      font-weight: 900;
+      animation: suit-dance 1.8s ease-in-out infinite;
+    }
+    .winner-suit-one { margin: -126px 0 0 -220px; }
+    .winner-suit-two { margin: 108px -224px 0 0; animation-delay: -0.6s; }
+    .winner-suit-three { margin: 118px 0 0 -230px; animation-delay: -1.2s; }
+    .winner-list { display: grid; gap: 10px; width: min(520px, 100%); margin: 24px auto; text-align: left; }
+    .winner-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; animation: card-arrive 420ms ease both; animation-delay: var(--delay); }
+    .winner-player { display: flex; align-items: center; gap: 10px; }
+    .hidden { display: none !important; }
+    .top-actions { display: flex; gap: 8px; }
+    .icon-btn { min-width: 44px; padding: 8px 12px; }
+    .editor-card {
+      width: min(900px, 100%);
+      margin: 0 auto;
+      padding: clamp(20px, 4vw, 36px);
+    }
+    .editor-section {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid var(--cp-border);
+    }
+    .editor-grid { display: grid; gap: 12px; }
+    .editor-player {
+      display: grid;
+      grid-template-columns: auto auto minmax(160px, 1fr) 170px auto;
+      align-items: end;
+      gap: 12px;
+      padding: 14px;
+    }
+    .editor-game { margin-top: 12px; padding: 16px; }
+    .editor-game-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .editor-result {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) 110px 110px 90px;
+      align-items: end;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--cp-border);
+    }
+    .editor-result:last-child { border-bottom: 0; }
+    .checkbox-field {
+      display: flex;
+      min-height: 52px;
+      align-items: center;
+      gap: 8px;
+      color: var(--cp-text);
+      font-weight: 750;
+    }
+    .checkbox-field input { width: 22px; height: 22px; accent-color: var(--cp-accent); }
+    .home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; }
+    .home-main, .home-side { display: grid; align-content: start; gap: 16px; }
+    .hero-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(230px, 0.7fr);
+      align-items: center;
+      gap: 24px;
+      overflow: hidden;
+      padding: clamp(24px, 5vw, 44px);
+    }
+    .hero-card::after {
+      position: absolute;
+      right: 24px;
+      bottom: -42px;
+      color: var(--cp-accent);
+      content: "♦";
+      font-size: 190px;
+      opacity: 0.06;
+      transform: rotate(12deg);
+    }
+    .hero-card > * { position: relative; z-index: 1; }
+    .home-card-art {
+      position: relative;
+      min-height: 230px;
+      perspective: 900px;
+    }
+    .portrait-card {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      display: grid;
+      width: 126px;
+      height: 176px;
+      grid-template-rows: auto 1fr auto;
+      padding: 9px;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      box-shadow: var(--cp-shadow);
+      transform-style: preserve-3d;
+      transform: translate(-50%, -50%) translate(var(--card-x), var(--card-y)) rotate(var(--card-rotation));
+      animation:
+        home-card-deal 620ms cubic-bezier(.18,.9,.25,1.25) both,
+        home-card-spin 7s ease-in-out infinite;
+      animation-delay: var(--card-delay), calc(900ms + var(--card-delay));
+    }
+    .portrait-card:nth-child(even) { color: var(--cp-accent); }
+    .portrait-card:hover {
+      z-index: 8;
+      border-color: var(--cp-accent);
+      transform: translate(-50%, -58%) translate(var(--card-x), var(--card-y)) rotate(0) scale(1.06);
+    }
+    .portrait-card-corner {
+      display: grid;
+      justify-items: start;
+      font-family: Consolas, "Courier New", Courier, monospace;
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 0.9;
+    }
+    .portrait-card-corner:last-child { justify-items: end; transform: rotate(180deg); }
+    .portrait-card-person { display: grid; align-content: center; justify-items: center; gap: 7px; min-width: 0; }
+    .portrait-card-person .avatar {
+      width: 76px;
+      height: 76px;
+      flex-basis: 76px;
+      border: 3px solid var(--cp-accent);
+      background: var(--cp-accent-soft);
+      font-size: 42px;
+    }
+    .portrait-card-name {
+      width: 100%;
+      overflow: hidden;
+      color: var(--cp-text);
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .stat-card { padding: 18px; }
+    .stat-value { font-size: clamp(28px, 5vw, 42px); font-weight: 900; letter-spacing: -0.04em; }
+    .stat-label { margin-top: 4px; color: var(--cp-text-muted); font-size: 13px; font-weight: 700; }
+    .home-section { padding: 18px; }
+    .active-match { padding: 18px; border-color: var(--cp-accent); }
+    .active-players { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .avatar-chip {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 10px 6px 6px;
+      border: 1px solid var(--cp-border);
+      border-radius: 999px;
+      background: var(--cp-surface-soft);
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .avatar-chip .avatar { width: 28px; height: 28px; flex-basis: 28px; font-size: 16px; }
+    .archive-list { display: grid; gap: 12px; }
+    .archive-item { padding: 0 16px; }
+    .archive-item summary {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 0;
+      cursor: pointer;
+      list-style: none;
+    }
+    .archive-item summary::-webkit-details-marker { display: none; }
+    .archive-item summary::before { color: var(--cp-accent); content: "›"; font-size: 24px; font-weight: 900; transition: transform 180ms ease; }
+    .archive-item[open] summary::before { transform: rotate(90deg); }
+    .archive-body { padding: 0 0 16px; }
+    .archive-winner { font-weight: 850; }
+    .archive-date { display: block; margin-top: 3px; color: var(--cp-text-muted); font-size: 13px; }
+    .archive-scores { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+    .archive-score { padding: 7px 10px; border-radius: 999px; background: var(--cp-surface-soft); font-size: 13px; }
+    .deleted-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 16px; }
+    .deleted-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
+    .home-empty { padding: 24px 8px; color: var(--cp-text-muted); text-align: center; }
+    .group-list { display: grid; gap: 12px; }
+    .group-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 16px;
+      border: 1px solid var(--cp-border);
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      animation: card-arrive 420ms ease both;
+      animation-delay: var(--delay);
+    }
+    .group-card:hover { border-color: var(--cp-border-strong); }
+    .group-card:active { transform: scale(0.99); }
+    .group-card-name { font-size: 20px; font-weight: 850; }
+    .group-card .active-players { margin-top: 10px; }
+    .group-card-open { color: var(--cp-accent); font-size: 28px; font-weight: 900; }
+    .live-pill {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--cp-accent);
+      color: var(--cp-accent-fg);
+      font-size: 12px;
+      font-weight: 800;
+      vertical-align: middle;
+    }
+    .group-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 18px; }
+    .group-header h2 { margin: 4px 0 0; }
+    .leader-meta { color: var(--cp-text-muted); font-size: 12px; font-weight: 700; }
+    .modal-backdrop {
+      position: fixed;
+      z-index: 100;
+      inset: 0;
+      display: grid;
+      padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+      place-items: center;
+      background: var(--cp-overlay);
+      animation: fade-in 160ms ease both;
+    }
+    .avatar-picker {
+      width: min(560px, 100%);
+      max-height: 88vh;
+      overflow-y: auto;
+      padding: 24px;
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-panel-strong);
+      box-shadow: var(--cp-shadow);
+      animation: picker-arrive 220ms cubic-bezier(.2,.8,.2,1) both;
+    }
+    .avatar-picker-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .avatar-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 18px; }
+    .avatar-choice {
+      display: grid;
+      aspect-ratio: 1;
+      place-items: center;
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      cursor: pointer;
+      font-size: clamp(28px, 7vw, 42px);
+      transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+    }
+    .avatar-choice:hover { border-color: var(--cp-accent); background: var(--cp-accent-soft); transform: translateY(-2px) scale(1.04); }
+    .photo-cropper { width: min(520px, 100%); }
+    .crop-stage {
+      position: relative;
+      width: min(72vw, 360px);
+      aspect-ratio: 1;
+      margin: 20px auto;
+      overflow: hidden;
+      border: 3px solid var(--cp-accent);
+      border-radius: 50%;
+      background: var(--cp-surface-soft);
+      box-shadow: 0 0 0 8px var(--cp-accent-soft);
+      touch-action: none;
+      cursor: grab;
+    }
+    .crop-stage.dragging { cursor: grabbing; }
+    .crop-stage canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .crop-guide {
+      position: absolute;
+      inset: 10%;
+      border: 1px solid var(--cp-sheen);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .crop-controls { display: grid; gap: 8px; margin: 0 auto 8px; }
+    .crop-controls label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 750; }
+    .crop-controls input[type="range"] { width: 100%; accent-color: var(--cp-accent); }
+    .crop-tip { margin: 12px 0 0; text-align: center; }
+    .confetti {
+      position: fixed;
+      z-index: 20;
+      top: -20px;
+      width: 10px;
+      height: 18px;
+      border-radius: 3px;
+      background: var(--cp-accent);
+      pointer-events: none;
+      animation: confetti-fall var(--duration) ease-in forwards;
+      animation-delay: var(--delay);
+    }
+    .confetti:nth-child(3n) { background: var(--cp-warning); }
+    .confetti:nth-child(3n + 1) { background: var(--cp-success); }
+    @keyframes card-arrive {
+      from { opacity: 0; transform: translateY(12px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateX(10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes logo-arrive {
+      from { opacity: 0; transform: rotate(-12deg) scale(0.75); }
+      to { opacity: 1; transform: rotate(0) scale(1); }
+    }
+    @keyframes winner-pop {
+      0% { opacity: 0; transform: scale(0.5) rotate(-12deg); }
+      70% { transform: scale(1.12) rotate(4deg); }
+      100% { opacity: 1; transform: scale(1) rotate(0); }
+    }
+    @keyframes winner-avatar-enter {
+      0% { opacity: 0; transform: translateY(70px) scale(0.35) rotate(-18deg); }
+      65% { opacity: 1; transform: translateY(-12px) scale(1.12) rotate(6deg); }
+      100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+    }
+    @keyframes winner-dance {
+      0% { transform: translateY(0) rotate(-7deg) scale(1); }
+      50% { transform: translateY(-16px) rotate(0) scale(1.06); }
+      100% { transform: translateY(0) rotate(7deg) scale(1); }
+    }
+    @keyframes crown-bob {
+      from { transform: translateY(0) rotate(-7deg) scale(1); }
+      to { transform: translateY(-10px) rotate(7deg) scale(1.08); }
+    }
+    @keyframes winner-halo {
+      from { transform: scale(0.88) rotate(0); opacity: 0.55; }
+      to { transform: scale(1.08) rotate(12deg); opacity: 1; }
+    }
+    @keyframes suit-dance {
+      0%, 100% { transform: translateY(0) rotate(-12deg); }
+      50% { transform: translateY(-18px) rotate(12deg); }
+    }
+    @keyframes home-card-deal {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 20%) translate(0, 80px) rotate(0) scale(0.72);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, -50%) translate(var(--card-x), var(--card-y)) rotate(var(--card-rotation)) scale(1);
+      }
+    }
+    @keyframes home-card-spin {
+      0%, 70%, 100% {
+        transform: translate(-50%, -50%) translate(var(--card-x), var(--card-y))
+          rotate(var(--card-rotation)) rotateY(0);
+      }
+      84% {
+        transform: translate(-50%, -54%) translate(var(--card-x), var(--card-y))
+          rotate(var(--card-rotation)) rotateY(180deg) scale(1.04);
+      }
+      96% {
+        transform: translate(-50%, -50%) translate(var(--card-x), var(--card-y))
+          rotate(var(--card-rotation)) rotateY(360deg);
+      }
+    }
+    @keyframes float-suit {
+      0%, 100% { transform: translateY(0) rotate(-5deg); }
+      50% { transform: translateY(-18px) rotate(5deg); }
+    }
+    @keyframes confetti-fall {
+      from { opacity: 1; transform: translate3d(0, 0, 0) rotate(0); }
+      to { opacity: 0; transform: translate3d(var(--drift), 105vh, 0) rotate(720deg); }
+    }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes picker-arrive {
+      from { opacity: 0; transform: translateY(16px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
+    }
+
+    @media (max-width: 820px) {
+      .game-shell { grid-template-columns: 1fr; }
+      .home-grid { grid-template-columns: 1fr; }
+      .home-side { grid-row: 1; }
+      #homeView .home-side { grid-row: auto; }
+      .hero-card { grid-template-columns: minmax(0, 1fr) 240px; }
+      .sidebar { grid-row: 1; }
+      .rules { display: none; }
+      .player-row { grid-template-columns: 1fr; }
+      .score-controls { justify-content: space-between; }
+    }
+    @media (max-width: 520px) {
+      .app { padding-left: 12px; padding-right: 12px; }
+      .brand-mark { width: 42px; height: 42px; }
+      .hero-card { grid-template-columns: 1fr; }
+      .home-card-art { min-height: 205px; }
+      .game-header { align-items: start; flex-direction: column; }
+      .score-controls { flex-wrap: wrap; }
+      .stepper { flex: 1; }
+      .setup-card { margin-top: 2vh; padding: 24px 18px; }
+      .editor-player, .editor-result { grid-template-columns: 1fr 1fr; }
+      .editor-player .avatar-stack { grid-column: auto; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .deleted-item { grid-template-columns: 1fr; }
+      .deleted-actions { justify-content: start; }
+      .editor-player .btn { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark"><img src="ScorekeeperLogo.png" alt="" /></div>
+        <div>
+          <h1>Scorekeeper</h1>
+          <div class="muted small">Local card game tracker</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="homeButton" class="btn icon-btn hidden" type="button">Home</button>
+        <button id="editButton" class="btn icon-btn hidden" type="button">Edit</button>
+        <button id="undoButton" class="btn icon-btn hidden" type="button" title="Undo previous game">Undo</button>
+        <button id="resetButton" class="btn btn-danger icon-btn hidden" type="button">Reset</button>
+      </div>
+    </header>
+
+    <section id="homeView">
+      <div class="home-grid">
+        <div class="home-main">
+          <div class="hero-card card">
+            <div class="hero-copy">
+              <div class="step">Card night</div>
+              <h2>Who’s playing tonight?</h2>
+              <p class="muted">Open your group to start or resume a match, or create a new group for a different table.</p>
+              <div class="actions">
+                <button id="newGroup" class="btn btn-primary" type="button">+ New group</button>
+              </div>
+            </div>
+            <div id="homeHeroArt" class="home-card-art" aria-label="Players at the card table"></div>
+          </div>
+
+          <div class="home-section card">
+            <h3>Groups</h3>
+            <div id="groupList" class="group-list"></div>
+          </div>
+
+          <div id="deletedGroupsSection" class="home-section card hidden">
+            <h3>Deleted groups</h3>
+            <p class="muted small">Restore a group with all its matches, or remove it permanently.</p>
+            <div id="deletedGroupList" class="archive-list"></div>
+          </div>
+        </div>
+
+        <aside class="home-side">
+          <div class="stats-grid">
+            <div class="stat-card card">
+              <div id="groupsCount" class="stat-value">0</div>
+              <div class="stat-label">Groups</div>
+            </div>
+            <div class="stat-card card">
+              <div id="allMatchesPlayed" class="stat-value">0</div>
+              <div class="stat-label">Matches completed</div>
+            </div>
+            <div class="stat-card card">
+              <div id="allPlayersTracked" class="stat-value">0</div>
+              <div class="stat-label">Players tracked</div>
+            </div>
+          </div>
+          <div class="leaderboard card">
+            <h3>All players</h3>
+            <p class="muted small">Every group combined. The same name counts as the same player.</p>
+            <div id="globalLeaderboard"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="groupView" class="hidden">
+      <div class="home-grid">
+        <div class="home-main">
+          <div class="group-header card">
+            <div>
+              <div class="step">Group</div>
+              <h2 id="groupTitle">Group</h2>
+              <div id="groupMembers" class="active-players"></div>
+            </div>
+            <button id="editGroup" class="btn" type="button">Edit group</button>
+          </div>
+
+          <div class="hero-card card">
+            <div class="hero-copy">
+              <div class="step">Card night</div>
+              <h2>Ready for the next match?</h2>
+              <p class="muted">Track declarations, all 13 groups, match winners, and your complete playing history.</p>
+              <div class="actions">
+                <button id="newHomeMatch" class="btn btn-primary" type="button">Start new match</button>
+              </div>
+            </div>
+            <div id="homeCardArt" class="home-card-art" aria-label="Players at the card table"></div>
+          </div>
+
+          <div id="activeMatchCard" class="active-match card hidden">
+            <div class="step">In progress</div>
+            <h3 id="activeMatchTitle">Current match</h3>
+            <p id="activeMatchText" class="muted"></p>
+            <div id="activePlayers" class="active-players"></div>
+            <div class="actions">
+              <button id="resumeMatch" class="btn btn-primary" type="button">Resume</button>
+              <button id="endMatch" class="btn" type="button">End now</button>
+              <button id="deleteMatch" class="btn btn-danger" type="button">Delete</button>
+            </div>
+          </div>
+
+          <div class="home-section card">
+            <h3>Match history</h3>
+            <div id="archiveList" class="archive-list"></div>
+          </div>
+
+          <div class="home-section card">
+            <h3>Recently deleted</h3>
+            <p class="muted small">Restore accidental deletions, or remove them permanently.</p>
+            <div id="deletedList" class="archive-list"></div>
+          </div>
+        </div>
+
+        <aside class="home-side">
+          <div class="stats-grid">
+            <div class="stat-card card">
+              <div id="matchesPlayed" class="stat-value">0</div>
+              <div class="stat-label">Matches completed</div>
+            </div>
+            <div class="stat-card card">
+              <div id="gamesPlayed" class="stat-value">0</div>
+              <div class="stat-label">Games scored</div>
+            </div>
+            <div class="stat-card card">
+              <div id="playersTracked" class="stat-value">0</div>
+              <div class="stat-label">Players tracked</div>
+            </div>
+          </div>
+          <div class="leaderboard card">
+            <h3>Match wins</h3>
+            <div id="homeLeaderboard"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="setupView" class="hidden">
+      <div id="setupPlayers" class="setup-card card">
+        <div id="groupEditorStep" class="step">New group</div>
+        <h2 id="groupEditorTitle">Who is in this group?</h2>
+        <p class="muted">Name the group, then add everyone who plays at this table. Matches in this group always use these players.</p>
+        <div class="field">
+          <label for="groupName">Group name</label>
+          <input id="groupName" type="text" autocomplete="off" maxlength="40" placeholder="e.g. Friday night" />
+        </div>
+        <div class="field">
+          <label for="playerCount">Number of players</label>
+          <input id="playerCount" type="number" min="2" max="12" inputmode="numeric" value="4" />
+        </div>
+        <div id="nameFields" class="name-fields"></div>
+        <div id="groupError" class="banner hidden"></div>
+        <div class="actions">
+          <button id="cancelGroupEdit" class="btn" type="button">Cancel</button>
+          <button id="continueSetup" class="btn btn-primary btn-wide" type="button">Create group</button>
+        </div>
+        <div id="deleteGroupArea" class="actions hidden">
+          <button id="deleteGroup" class="btn btn-danger" type="button">Delete group</button>
+          <span id="deleteGroupHint" class="muted small"></span>
+        </div>
+      </div>
+
+      <div id="setupGames" class="setup-card card hidden">
+        <div id="newMatchStep" class="step">New match</div>
+        <h2>How many games?</h2>
+        <p class="muted">The final winner will be announced after all games are scored.</p>
+        <div class="field">
+          <label for="gameCount">Number of games</label>
+          <input id="gameCount" type="number" min="1" max="100" inputmode="numeric"
+            aria-label="Number of games" value="15" />
+        </div>
+        <div class="field">
+          <label for="minimumDeclaration">Minimum normal declaration per player</label>
+          <input id="minimumDeclaration" type="number" min="1" max="100" inputmode="numeric"
+            aria-label="Minimum declaration" value="3" />
+          <span class="muted small">Defaults to 3. Normal declarations cannot go below this value; Andhi is always locked at 5.</span>
+        </div>
+        <div class="actions">
+          <button id="backSetup" class="btn" type="button">Cancel</button>
+          <button id="startMatch" class="btn btn-primary btn-wide" type="button">Start match</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="gameView" class="hidden">
+      <div class="game-shell">
+        <div class="main-panel">
+          <div class="game-header">
+            <div>
+              <div id="phasePill" class="phase-pill">Declare groups</div>
+              <h2 id="gameTitle">Game 1</h2>
+              <p id="gameHint" class="muted">Set each player’s declaration. Default is 3.</p>
+            </div>
+            <div id="progressText" class="muted">1 of 5</div>
+          </div>
+          <div id="warningBanner" class="banner hidden"></div>
+          <div id="playerRows" class="player-list"></div>
+          <div class="actions">
+            <button id="phaseButton" class="btn btn-primary btn-wide" type="button">Lock declarations</button>
+          </div>
+          <div id="historyCard" class="history card hidden">
+            <h3>Game history</h3>
+            <div id="historyTable"></div>
+          </div>
+        </div>
+
+        <aside class="sidebar">
+          <div class="leaderboard card">
+            <h3>Leaderboard</h3>
+            <div id="leaderboardRows"></div>
+          </div>
+          <div class="rules card">
+            <h3>Scoring rules</h3>
+            <p><strong>Normal:</strong> Make at least your declared groups but less than double. Score is declaration × 10, plus 1 per extra group.</p>
+            <p><strong>Failed:</strong> Make fewer than declared, or double/more. Score is negative declaration × 10.</p>
+            <p><strong>Andhi:</strong> Make 5 or more for +100. Otherwise −50.</p>
+            <p><strong>Declarations:</strong> Each normal declaration must meet the match minimum, with no upper or combined-total limit.</p>
+            <p><strong>Group total:</strong> Only actual groups must total exactly 13 before a game can be scored.</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="winnerView" class="hidden">
+      <div class="winner card">
+        <div class="trophy">🏆</div>
+        <div class="step">Match complete</div>
+        <div id="winnerCelebration" class="winner-celebration" aria-label="Winner celebration"></div>
+        <h2 id="winnerTitle">Winner</h2>
+        <p id="winnerText" class="muted"></p>
+        <div id="winnerList" class="winner-list"></div>
+        <div class="actions">
+          <button id="reviewMatch" class="btn btn-wide" type="button">Review match</button>
+          <button id="newMatch" class="btn btn-primary btn-wide" type="button">New match</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="editView" class="hidden">
+      <div class="editor-card card">
+        <div class="step">Edit anytime</div>
+        <h2>Edit match</h2>
+        <p class="muted">Change players, drag to reorder Player 1–4, or edit any game. Renamed players become future defaults and matching names in completed history are updated. Scores recalculate when saved.</p>
+
+        <div class="field">
+          <label for="editTotalGames">Number of games</label>
+          <input id="editTotalGames" type="number" min="1" max="100" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="editMinimumDeclaration">Minimum normal declaration per player</label>
+          <input id="editMinimumDeclaration" type="number" min="1" max="100" inputmode="numeric" />
+        </div>
+
+        <div class="editor-section">
+          <h3>Players</h3>
+          <div id="editPlayers" class="editor-grid"></div>
+          <div class="actions">
+            <button id="addPlayer" class="btn" type="button">Add player</button>
+          </div>
+        </div>
+
+        <div id="editCurrentSection" class="editor-section">
+          <h3 id="editCurrentTitle">Current game</h3>
+          <div id="editCurrentGame" class="editor-game card"></div>
+        </div>
+
+        <div id="editHistorySection" class="editor-section">
+          <h3>Completed games</h3>
+          <div id="editHistory"></div>
+        </div>
+
+        <div class="actions">
+          <button id="cancelEdit" class="btn" type="button">Cancel</button>
+          <button id="saveEdit" class="btn btn-primary btn-wide" type="button">Save changes</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="avatarPickerModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="avatarPickerTitle">
+      <div class="avatar-picker">
+        <div class="avatar-picker-header">
+          <div>
+            <div class="step">Player style</div>
+            <h2 id="avatarPickerTitle">Choose an avatar</h2>
+          </div>
+          <button id="closeAvatarPicker" class="btn icon-btn" type="button" aria-label="Close avatar picker">Done</button>
+        </div>
+        <div id="avatarGrid" class="avatar-grid"></div>
+        <div class="actions">
+          <label class="btn btn-wide" for="avatarPhotoInput">Choose a photo from iPad</label>
+          <input id="avatarPhotoInput" class="photo-input" type="file" accept="image/*" />
+        </div>
+        <p class="muted small">Your latest avatar is remembered for this player name and stored only on this device.</p>
+      </div>
+    </div>
+
+    <div id="photoCropModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="photoCropTitle">
+      <div class="avatar-picker photo-cropper">
+        <div class="avatar-picker-header">
+          <div>
+            <div class="step">Photo avatar</div>
+            <h2 id="photoCropTitle">Crop your photo</h2>
+          </div>
+        </div>
+        <p class="muted crop-tip">Drag to reposition. Pinch or use the slider to zoom.</p>
+        <div id="cropStage" class="crop-stage" aria-label="Photo crop preview">
+          <canvas id="cropCanvas" width="640" height="640"></canvas>
+          <div class="crop-guide"></div>
+        </div>
+        <div class="crop-controls">
+          <label for="cropZoom"><span>Zoom</span><span id="cropZoomValue">100%</span></label>
+          <input id="cropZoom" type="range" min="1" max="4" step="0.01" value="1" />
+        </div>
+        <div class="actions">
+          <button id="cancelPhotoCrop" class="btn btn-wide" type="button">Choose another</button>
+          <button id="applyPhotoCrop" class="btn btn-primary btn-wide" type="button">Use photo</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirmModal" class="modal-backdrop hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="avatar-picker">
+        <div class="step">Please confirm</div>
+        <h2 id="confirmTitle">Are you sure?</h2>
+        <p id="confirmMessage" class="muted"></p>
+        <div class="actions">
+          <button id="cancelConfirm" class="btn btn-wide" type="button" aria-label="Cancel action">Cancel</button>
+          <button id="acceptConfirm" class="btn btn-danger btn-wide" type="button" aria-label="Confirm action">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "local-card-game-scorekeeper-v1";
+    const ARCHIVE_KEY = "local-card-game-scorekeeper-archive-v1";
+    const TRASH_KEY = "local-card-game-scorekeeper-trash-v1";
+    const AVATAR_PREFERENCES_KEY = "local-card-game-scorekeeper-avatar-preferences-v1";
+    const PLAYER_DEFAULTS_KEY = "local-card-game-scorekeeper-player-defaults-v1";
+    const GROUPS_KEY = "local-card-game-scorekeeper-groups-v1";
+    const ACTIVE_BY_GROUP_KEY = "local-card-game-scorekeeper-active-by-group-v1";
+    // Name for the most-played line-up when existing history is first sorted into groups.
+    const FIRST_MIGRATED_GROUP_NAME = "My group";
+    const GROUPS_PER_GAME = 13;
+    const AVATAR_OPTIONS = [
+      "🦊", "🐼", "🦁", "🐸", "🐯",
+      "🐨", "🐵", "🐙", "🦄", "🐧",
+      "🐰", "🐻", "🐶", "🐱", "🦋",
+      "🐬", "🦖", "🦉", "🌟", "🎯"
+    ];
+    const BUILT_IN_PLAYER_DEFAULTS = [
+      { name: "Player 1", avatar: "🦊" },
+      { name: "Player 2", avatar: "🐼" },
+      { name: "Player 3", avatar: "🦁" },
+      { name: "Player 4", avatar: "🐸" }
+    ];
+    let playerDefaults = BUILT_IN_PLAYER_DEFAULTS.map((player) => ({ ...player }));
+
+    const state = {
+      setupNames: playerDefaults.map((player) => player.name),
+      setupAvatars: playerDefaults.map((player) => player.avatar),
+      players: [],
+      totalGames: 0,
+      minimumDeclaration: 3,
+      currentGame: 1,
+      phase: "declarations",
+      declarations: {},
+      andhi: {},
+      actuals: {},
+      history: [],
+      complete: false,
+      reviewing: false,
+      startedAt: null,
+      completedAt: null,
+      archiveId: null,
+      groupId: null
+    };
+    let archive = [];
+    let trash = [];
+    let groups = [];
+    let activeByGroup = {};
+    let currentGroupId = null;
+    let groupEditor = null;
+    let avatarPreferences = {};
+    let editSnapshot = null;
+    let avatarTarget = null;
+    let pendingConfirmation = null;
+    let photoCrop = null;
+    const cropPointers = new Map();
+    let cropGesture = null;
+
+    const $ = (id) => document.getElementById(id);
+    const clampInt = (value, min, max, fallback) => {
+      const number = Number.parseInt(value, 10);
+      return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+    };
+
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function saveArchive() {
+      localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive));
+    }
+
+    function saveTrash() {
+      localStorage.setItem(TRASH_KEY, JSON.stringify(trash));
+    }
+
+    function saveGroups() {
+      localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
+    }
+
+    function saveActiveByGroup() {
+      localStorage.setItem(ACTIVE_BY_GROUP_KEY, JSON.stringify(activeByGroup));
+    }
+
+    function newId() {
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function groupById(id) {
+      return groups.find((group) => group.id === id) || null;
+    }
+
+    function liveGroups() {
+      return groups.filter((group) => !group.deletedAt);
+    }
+
+    function isLiveRecord(record) {
+      const group = groupById(recordGroupId(record));
+      return !group || !group.deletedAt;
+    }
+
+    function recordGroupId(record) {
+      return record.groupId || record.snapshot?.groupId || null;
+    }
+
+    function groupArchive(groupId) {
+      return archive.filter((record) => recordGroupId(record) === groupId);
+    }
+
+    function groupTrash(groupId) {
+      return trash.filter((record) => recordGroupId(record) === groupId);
+    }
+
+    function isInProgress(match) {
+      return Boolean(match && match.players?.length && !match.complete);
+    }
+
+    function groupActiveMatch(groupId) {
+      if (state.groupId === groupId && isInProgress(state)) return state;
+      return isInProgress(activeByGroup[groupId]) ? activeByGroup[groupId] : null;
+    }
+
+    function lineupKey(players) {
+      return players.map((player) => avatarPreferenceKey(player.name)).sort().join("|");
+    }
+
+    // Each group keeps its own unfinished match: park the open one and load the selected group's.
+    function enterGroupMatch(groupId) {
+      if (state.groupId === groupId) return;
+      if (state.groupId && isInProgress(state)) {
+        activeByGroup[state.groupId] = JSON.parse(JSON.stringify(state));
+      }
+      const parked = activeByGroup[groupId];
+      delete activeByGroup[groupId];
+      saveActiveByGroup();
+      Object.assign(state, emptyActiveState(groupId), parked ? JSON.parse(JSON.stringify(parked)) : {});
+      state.groupId = groupId;
+      editSnapshot = null;
+      save();
+    }
+
+    function migrateGroups() {
+      const records = [...archive, ...trash].filter((record) => record.snapshot?.players?.length);
+      const matches = records.map((record) => ({ target: record, players: record.snapshot.players }));
+      if (state.players.length) matches.push({ target: state, players: state.players });
+      Object.entries(activeByGroup).forEach(([, match]) => {
+        if (match?.players?.length) matches.push({ target: match, players: match.players });
+      });
+
+      const groupForLineup = new Map(groups.map((group) => [lineupKey(group.members), group]));
+      if (!groups.length && matches.length) {
+        const lineups = new Map();
+        matches.forEach(({ players }) => {
+          const key = lineupKey(players);
+          const entry = lineups.get(key) || { players, count: 0 };
+          entry.count += 1;
+          lineups.set(key, entry);
+        });
+        [...lineups.entries()]
+          .sort((a, b) => b[1].count - a[1].count)
+          .forEach(([key, { players }], index) => {
+            const members = (lineupKey(playerDefaults) === key ? playerDefaults : players).map((player) => ({
+              name: player.name,
+              avatar: preferredAvatar(player.name, player.avatar)
+            }));
+            const group = {
+              id: newId(),
+              name: index === 0 ? FIRST_MIGRATED_GROUP_NAME : members.map((member) => member.name).join(", "),
+              members,
+              createdAt: new Date().toISOString()
+            };
+            groups.push(group);
+            groupForLineup.set(key, group);
+          });
+        saveGroups();
+      }
+
+      let changed = false;
+      matches.forEach(({ target, players }) => {
+        const holder = target.snapshot || target;
+        if (target.groupId || holder.groupId) return;
+        const group = groupForLineup.get(lineupKey(players));
+        if (!group) return;
+        holder.groupId = group.id;
+        if (target.snapshot) target.groupId = group.id;
+        changed = true;
+      });
+      if (changed) {
+        saveArchive();
+        saveTrash();
+        saveActiveByGroup();
+        if (state.players.length) save();
+      }
+    }
+
+    function avatarPreferenceKey(name) {
+      return String(name || "").trim().toLocaleLowerCase();
+    }
+
+    function preferredAvatar(name, fallback) {
+      return avatarPreferences[avatarPreferenceKey(name)] || fallback;
+    }
+
+    function rememberAvatar(name, avatar) {
+      const key = avatarPreferenceKey(name);
+      if (!key || !avatar) return;
+      avatarPreferences[key] = avatar;
+      localStorage.setItem(AVATAR_PREFERENCES_KEY, JSON.stringify(avatarPreferences));
+    }
+
+    function normalizePlayerDefaults(value) {
+      if (!Array.isArray(value) || value.length < 2) {
+        return BUILT_IN_PLAYER_DEFAULTS.map((player) => ({ ...player }));
+      }
+      return value.slice(0, 12).map((player, index) => ({
+        name: String(player?.name || "").trim() || `Player ${index + 1}`,
+        avatar: player?.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]
+      }));
+    }
+
+    function savePlayerDefaults(players) {
+      playerDefaults = normalizePlayerDefaults(players.map((player, index) => ({
+        name: String(player.name || "").trim() || `Player ${index + 1}`,
+        avatar: player.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]
+      })));
+      state.setupNames = playerDefaults.map((player) => player.name);
+      state.setupAvatars = playerDefaults.map((player) => player.avatar);
+      localStorage.setItem(PLAYER_DEFAULTS_KEY, JSON.stringify(playerDefaults));
+    }
+
+    function propagatePlayerRename(oldName, newName, avatar, groupId = null) {
+      const oldKey = avatarPreferenceKey(oldName);
+      const newKey = avatarPreferenceKey(newName);
+      if (!oldKey || !newKey || oldKey === newKey) return false;
+      let changed = false;
+      let trashChanged = false;
+      const inScope = (record) => !groupId || recordGroupId(record) === groupId;
+      const renameIn = (snapshot) => {
+        let touched = false;
+        snapshot?.players?.forEach((player) => {
+          if (avatarPreferenceKey(player.name) !== oldKey) return;
+          player.name = newName;
+          if (avatar) player.avatar = avatar;
+          touched = true;
+        });
+        snapshot?.history?.forEach((game) => {
+          game.results?.forEach((result) => {
+            if (avatarPreferenceKey(result.name) !== oldKey) return;
+            result.name = newName;
+            touched = true;
+          });
+        });
+        return touched;
+      };
+      archive.filter(inScope).forEach((record) => {
+        if (renameIn(record.snapshot)) changed = true;
+      });
+      trash.filter(inScope).forEach((record) => {
+        if (renameIn(record.snapshot)) trashChanged = true;
+      });
+      if (trashChanged) saveTrash();
+      const group = groupById(groupId);
+      group?.members.forEach((member) => {
+        if (avatarPreferenceKey(member.name) !== oldKey) return;
+        member.name = newName;
+        if (avatar) member.avatar = avatar;
+        saveGroups();
+      });
+      rememberAvatar(newName, avatar);
+      return changed;
+    }
+
+    function moveArrayItem(items, fromIndex, toIndex) {
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 ||
+          fromIndex >= items.length || toIndex >= items.length) return;
+      const [item] = items.splice(fromIndex, 1);
+      items.splice(toIndex, 0, item);
+    }
+
+    function bindPointerReorder(container, itemSelector, handleSelector, onMove) {
+      container.querySelectorAll(handleSelector).forEach((handle) => {
+        handle.addEventListener("pointerdown", (event) => {
+          if (event.button !== undefined && event.button !== 0) return;
+          event.preventDefault();
+          const items = [...container.querySelectorAll(itemSelector)];
+          const draggedItem = handle.closest(itemSelector);
+          const fromIndex = items.indexOf(draggedItem);
+          let toIndex = fromIndex;
+          handle.setPointerCapture(event.pointerId);
+          draggedItem.classList.add("dragging");
+
+          const clearTargets = () => {
+            items.forEach((item) => item.classList.remove("drop-target"));
+          };
+          const move = (moveEvent) => {
+            clearTargets();
+            toIndex = items.reduce((closestIndex, item, index) => {
+              const closestRect = items[closestIndex].getBoundingClientRect();
+              const itemRect = item.getBoundingClientRect();
+              const closestDistance = Math.abs(moveEvent.clientY - (closestRect.top + closestRect.height / 2));
+              const itemDistance = Math.abs(moveEvent.clientY - (itemRect.top + itemRect.height / 2));
+              return itemDistance < closestDistance ? index : closestIndex;
+            }, 0);
+            if (items[toIndex] && items[toIndex] !== draggedItem) {
+              items[toIndex].classList.add("drop-target");
+            }
+          };
+          const finish = () => {
+            clearTargets();
+            draggedItem.classList.remove("dragging");
+            handle.removeEventListener("pointermove", move);
+            handle.removeEventListener("pointerup", finish);
+            handle.removeEventListener("pointercancel", finish);
+            if (fromIndex !== toIndex) onMove(fromIndex, toIndex);
+          };
+          handle.addEventListener("pointermove", move);
+          handle.addEventListener("pointerup", finish);
+          handle.addEventListener("pointercancel", finish);
+        });
+      });
+    }
+
+    function adoptExistingAvatars() {
+      let changed = false;
+      const rememberIfMissing = (name, avatar) => {
+        const key = avatarPreferenceKey(name);
+        if (!key || !avatar || avatarPreferences[key]) return;
+        avatarPreferences[key] = avatar;
+        changed = true;
+      };
+      state.players.forEach((player) => rememberIfMissing(player.name, player.avatar));
+      state.setupNames.forEach((name, index) => rememberIfMissing(name, state.setupAvatars[index]));
+      archive.forEach((record) => {
+        record.snapshot?.players?.forEach((player) => rememberIfMissing(player.name, player.avatar));
+      });
+      if (changed) localStorage.setItem(AVATAR_PREFERENCES_KEY, JSON.stringify(avatarPreferences));
+    }
+
+    function applyPreferredSetupAvatars() {
+      state.setupAvatars = state.setupNames.map((name, index) =>
+        preferredAvatar(name, state.setupAvatars[index] || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length])
+      );
+    }
+
+    function load() {
+      let hasSavedPlayerDefaults = false;
+      try {
+        const storedPlayerDefaults = localStorage.getItem(PLAYER_DEFAULTS_KEY);
+        hasSavedPlayerDefaults = Boolean(storedPlayerDefaults);
+        playerDefaults = normalizePlayerDefaults(JSON.parse(storedPlayerDefaults || "null"));
+      } catch {
+        playerDefaults = BUILT_IN_PLAYER_DEFAULTS.map((player) => ({ ...player }));
+      }
+      state.setupNames = playerDefaults.map((player) => player.name);
+      state.setupAvatars = playerDefaults.map((player) => player.avatar);
+      try {
+        avatarPreferences = JSON.parse(localStorage.getItem(AVATAR_PREFERENCES_KEY) || "{}");
+        if (!avatarPreferences || Array.isArray(avatarPreferences) || typeof avatarPreferences !== "object") {
+          avatarPreferences = {};
+        }
+      } catch {
+        avatarPreferences = {};
+      }
+      try {
+        archive = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]");
+        if (!Array.isArray(archive)) archive = [];
+        let archiveChanged = false;
+        archive.forEach((record) => {
+          if (record.snapshot) {
+            const minimumDeclaration = clampInt(record.snapshot.minimumDeclaration, 1, 100, 3);
+            if (record.snapshot.minimumDeclaration !== minimumDeclaration) {
+              record.snapshot.minimumDeclaration = minimumDeclaration;
+              archiveChanged = true;
+            }
+          }
+          if (record.snapshot && !record.snapshot.completedAt && record.completedAt) {
+            record.snapshot.completedAt = record.completedAt;
+            archiveChanged = true;
+          }
+        });
+        if (archiveChanged) saveArchive();
+      } catch {
+        archive = [];
+      }
+      try {
+        trash = JSON.parse(localStorage.getItem(TRASH_KEY) || "[]");
+        if (!Array.isArray(trash)) trash = [];
+      } catch {
+        trash = [];
+      }
+      try {
+        groups = JSON.parse(localStorage.getItem(GROUPS_KEY) || "[]");
+        if (!Array.isArray(groups)) groups = [];
+      } catch {
+        groups = [];
+      }
+      try {
+        activeByGroup = JSON.parse(localStorage.getItem(ACTIVE_BY_GROUP_KEY) || "{}");
+        if (!activeByGroup || Array.isArray(activeByGroup) || typeof activeByGroup !== "object") activeByGroup = {};
+      } catch {
+        activeByGroup = {};
+      }
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) {
+        if (!hasSavedPlayerDefaults && archive[0]?.snapshot?.players?.length) {
+          savePlayerDefaults(archive[0].snapshot.players);
+        }
+        return false;
+      }
+      try {
+        Object.assign(state, JSON.parse(stored));
+        state.minimumDeclaration = clampInt(state.minimumDeclaration, 1, 100, 3);
+        if (!state.completedAt && state.archiveId) {
+          state.completedAt = archive.find((record) => record.id === state.archiveId)?.completedAt || null;
+        }
+        state.players.forEach((player) => {
+          if (!Number.isFinite(player.adjustment)) player.adjustment = 0;
+          if (!player.avatar) player.avatar = AVATAR_OPTIONS[player.id % AVATAR_OPTIONS.length];
+        });
+        if (!hasSavedPlayerDefaults && state.players.length) savePlayerDefaults(state.players);
+        if (state.complete && state.history.length && !state.archiveId) {
+          archiveCurrentMatch();
+          save();
+        }
+        adoptExistingAvatars();
+        applyPreferredSetupAvatars();
+        return state.players.length > 0 && state.totalGames > 0;
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+        return false;
+      }
+    }
+
+    function renderNameFields() {
+      const count = clampInt($("playerCount").value, 2, 12, 4);
+      $("playerCount").value = count;
+      while (state.setupNames.length < count) state.setupNames.push("");
+      while (state.setupAvatars.length < count) {
+        state.setupAvatars.push(AVATAR_OPTIONS[state.setupAvatars.length % AVATAR_OPTIONS.length]);
+      }
+      state.setupNames = state.setupNames.slice(0, count);
+      state.setupAvatars = state.setupAvatars.slice(0, count);
+      $("nameFields").innerHTML = state.setupNames.map((name, index) => `
+        <div class="setup-player card reorder-item" data-setup-player="${index}" style="--delay: ${index * 55}ms">
+          <button class="drag-handle" type="button" data-setup-drag="${index}"
+            aria-label="Drag Player ${index + 1} to reorder">☰<span>Player ${index + 1}</span></button>
+          <div class="avatar-stack">
+            <button class="avatar-button" type="button" data-pick-setup-avatar="${index}"
+              aria-label="Change Player ${index + 1} avatar">${avatarMarkup(state.setupAvatars[index])}</button>
+            <span class="muted small">Tap to choose</span>
+          </div>
+          <div class="field">
+            <label for="playerName${index}">Player ${index + 1}</label>
+            <input id="playerName${index}" data-name-index="${index}" type="text"
+              aria-label="Player ${index + 1} name"
+              autocomplete="off" maxlength="28" placeholder="Enter name" value="${escapeHtml(name)}" />
+          </div>
+        </div>
+      `).join("");
+      document.querySelectorAll("[data-name-index]").forEach((input) => {
+        input.addEventListener("input", (event) => {
+          state.setupNames[Number(event.target.dataset.nameIndex)] = event.target.value;
+        });
+        input.addEventListener("change", (event) => {
+          const index = Number(event.target.dataset.nameIndex);
+          const savedAvatar = avatarPreferences[avatarPreferenceKey(event.target.value)];
+          if (!savedAvatar || savedAvatar === state.setupAvatars[index]) return;
+          state.setupAvatars[index] = savedAvatar;
+          renderNameFields();
+        });
+      });
+      document.querySelectorAll("[data-pick-setup-avatar]").forEach((button) => {
+        button.addEventListener("click", () => {
+          openAvatarPicker("setup", Number(button.dataset.pickSetupAvatar));
+        });
+      });
+      bindPointerReorder(
+        $("nameFields"),
+        "[data-setup-player]",
+        "[data-setup-drag]",
+        (fromIndex, toIndex) => {
+          moveArrayItem(state.setupNames, fromIndex, toIndex);
+          moveArrayItem(state.setupAvatars, fromIndex, toIndex);
+          if (groupEditor) {
+            while (groupEditor.originalNames.length < state.setupNames.length) groupEditor.originalNames.push("");
+            moveArrayItem(groupEditor.originalNames, fromIndex, toIndex);
+          }
+          renderNameFields();
+        }
+      );
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function avatarMarkup(avatar, className = "") {
+      if (String(avatar).startsWith("data:image/")) {
+        return `<span class="avatar ${className}"><img src="${escapeHtml(avatar)}" alt="" /></span>`;
+      }
+      return `<span class="avatar ${className}" aria-hidden="true">${escapeHtml(avatar || "🙂")}</span>`;
+    }
+
+    function nextAvatar(current) {
+      const index = AVATAR_OPTIONS.indexOf(current);
+      return AVATAR_OPTIONS[(index + 1 + AVATAR_OPTIONS.length) % AVATAR_OPTIONS.length];
+    }
+
+    function openAvatarPicker(type, id) {
+      avatarTarget = { type, id };
+      $("avatarGrid").innerHTML = AVATAR_OPTIONS.map((avatar) => `
+        <button class="avatar-choice" type="button" data-avatar-choice="${avatar}"
+          aria-label="Choose ${avatar} avatar">${avatar}</button>
+      `).join("");
+      document.querySelectorAll("[data-avatar-choice]").forEach((button) => {
+        button.addEventListener("click", () => {
+          setAvatar(button.dataset.avatarChoice);
+          closeAvatarPicker();
+        });
+      });
+      $("avatarPickerModal").classList.remove("hidden");
+    }
+
+    function closeAvatarPicker() {
+      $("avatarPickerModal").classList.add("hidden");
+      $("avatarPhotoInput").value = "";
+      avatarTarget = null;
+    }
+
+    function requestConfirmation(message, onConfirm) {
+      pendingConfirmation = onConfirm;
+      $("confirmMessage").textContent = message;
+      $("confirmModal").classList.remove("hidden");
+    }
+
+    function closeConfirmation(confirmed) {
+      $("confirmModal").classList.add("hidden");
+      const action = pendingConfirmation;
+      pendingConfirmation = null;
+      if (confirmed && action) action();
+    }
+
+    function setAvatar(avatar) {
+      if (!avatarTarget) return;
+      if (avatarTarget.type === "setup") {
+        state.setupAvatars[avatarTarget.id] = avatar;
+        rememberAvatar(state.setupNames[avatarTarget.id], avatar);
+        renderNameFields();
+      } else {
+        const player = state.players.find((entry) => entry.id === avatarTarget.id);
+        if (player) {
+          player.avatar = avatar;
+          rememberAvatar(player.name, avatar);
+        }
+        renderEditor();
+      }
+    }
+
+    function openPhotoCropper(file) {
+      if (!file || !file.type.startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+          photoCrop = { image, zoom: 1, offsetX: 0, offsetY: 0 };
+          $("cropZoom").value = "1";
+          $("cropZoomValue").textContent = "100%";
+          $("avatarPickerModal").classList.add("hidden");
+          $("photoCropModal").classList.remove("hidden");
+          requestAnimationFrame(drawPhotoCrop);
+        };
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function cropMetrics() {
+      const canvas = $("cropCanvas");
+      const image = photoCrop.image;
+      const baseScale = Math.max(canvas.width / image.width, canvas.height / image.height);
+      const scale = baseScale * photoCrop.zoom;
+      return {
+        scale,
+        width: image.width * scale,
+        height: image.height * scale
+      };
+    }
+
+    function constrainPhotoCrop() {
+      if (!photoCrop) return;
+      const canvas = $("cropCanvas");
+      const metrics = cropMetrics();
+      const maxX = Math.max(0, (metrics.width - canvas.width) / 2);
+      const maxY = Math.max(0, (metrics.height - canvas.height) / 2);
+      photoCrop.offsetX = Math.max(-maxX, Math.min(maxX, photoCrop.offsetX));
+      photoCrop.offsetY = Math.max(-maxY, Math.min(maxY, photoCrop.offsetY));
+    }
+
+    function drawPhotoCrop() {
+      if (!photoCrop) return;
+      constrainPhotoCrop();
+      const canvas = $("cropCanvas");
+      const context = canvas.getContext("2d");
+      const metrics = cropMetrics();
+      const x = (canvas.width - metrics.width) / 2 + photoCrop.offsetX;
+      const y = (canvas.height - metrics.height) / 2 + photoCrop.offsetY;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(photoCrop.image, x, y, metrics.width, metrics.height);
+    }
+
+    function cropPointerPosition(event) {
+      const rect = $("cropStage").getBoundingClientRect();
+      const canvas = $("cropCanvas");
+      return {
+        x: (event.clientX - rect.left) * canvas.width / rect.width,
+        y: (event.clientY - rect.top) * canvas.height / rect.height
+      };
+    }
+
+    function cropPointerCenter() {
+      const points = [...cropPointers.values()];
+      return {
+        x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+        y: points.reduce((sum, point) => sum + point.y, 0) / points.length
+      };
+    }
+
+    function cropPointerDistance() {
+      const points = [...cropPointers.values()];
+      if (points.length < 2) return 0;
+      return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+    }
+
+    function resetCropGesture() {
+      if (!photoCrop || cropPointers.size === 0) {
+        cropGesture = null;
+        return;
+      }
+      cropGesture = {
+        count: cropPointers.size,
+        center: cropPointerCenter(),
+        distance: cropPointerDistance(),
+        zoom: photoCrop.zoom,
+        offsetX: photoCrop.offsetX,
+        offsetY: photoCrop.offsetY
+      };
+    }
+
+    function closePhotoCropper(reopenPicker) {
+      $("photoCropModal").classList.add("hidden");
+      $("cropStage").classList.remove("dragging");
+      $("avatarPhotoInput").value = "";
+      cropPointers.clear();
+      cropGesture = null;
+      photoCrop = null;
+      if (reopenPicker && avatarTarget) $("avatarPickerModal").classList.remove("hidden");
+    }
+
+    function applyPhotoCrop() {
+      if (!photoCrop) return;
+      const source = $("cropCanvas");
+      const output = document.createElement("canvas");
+      output.width = 240;
+      output.height = 240;
+      output.getContext("2d").drawImage(source, 0, 0, output.width, output.height);
+      const avatar = output.toDataURL("image/jpeg", 0.82);
+      closePhotoCropper(false);
+      setAvatar(avatar);
+      closeAvatarPicker();
+    }
+
+    function emptyActiveState(groupId = state.groupId) {
+      const setupNames = playerDefaults.map((player) => player.name);
+      return {
+        setupNames,
+        setupAvatars: playerDefaults.map((player, index) =>
+          preferredAvatar(player.name, player.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length])
+        ),
+        players: [],
+        totalGames: 0,
+        minimumDeclaration: 3,
+        currentGame: 1,
+        phase: "declarations",
+        declarations: {},
+        andhi: {},
+        actuals: {},
+        history: [],
+        complete: false,
+        reviewing: false,
+        startedAt: null,
+        completedAt: null,
+        archiveId: null,
+        groupId
+      };
+    }
+
+    function clearActiveMatch() {
+      Object.assign(state, emptyActiveState());
+      localStorage.removeItem(STORAGE_KEY);
+      editSnapshot = null;
+    }
+
+    function archiveCurrentMatch() {
+      if (state.history.length === 0) return;
+      if (!state.archiveId) {
+        state.archiveId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+      if (!state.completedAt) state.completedAt = new Date().toISOString();
+      const record = {
+        id: state.archiveId,
+        groupId: state.groupId,
+        completedAt: state.completedAt,
+        snapshot: JSON.parse(JSON.stringify(state))
+      };
+      const existingIndex = archive.findIndex((entry) => entry.id === record.id);
+      if (existingIndex >= 0) archive[existingIndex] = record;
+      else archive.unshift(record);
+      saveArchive();
+    }
+
+    function unarchiveCurrentMatch() {
+      if (!state.archiveId) return;
+      archive = archive.filter((entry) => entry.id !== state.archiveId);
+      saveArchive();
+      state.archiveId = null;
+    }
+
+    function moveArchiveToTrash(id) {
+      const record = archive.find((entry) => entry.id === id);
+      if (!record) return;
+      archive = archive.filter((entry) => entry.id !== id);
+      trash = trash.filter((entry) => entry.id !== id);
+      trash.unshift({ ...record, kind: "completed", deletedAt: new Date().toISOString() });
+      saveArchive();
+      saveTrash();
+    }
+
+    function restoreFromTrash(id) {
+      const record = trash.find((entry) => entry.id === id);
+      if (!record) return;
+      const { deletedAt, kind, ...restored } = record;
+      trash = trash.filter((entry) => entry.id !== id);
+      saveTrash();
+      if (kind === "unfinished") {
+        // Keep the group's current unfinished match safe in Recently Deleted instead of overwriting it.
+        if (isInProgress(state) && state.archiveId !== restored.id) moveCurrentToTrash();
+        Object.assign(state, emptyActiveState(), JSON.parse(JSON.stringify(restored.snapshot)));
+        if (!state.groupId) state.groupId = restored.groupId || currentGroupId;
+        save();
+      } else {
+        archive = [restored, ...archive.filter((entry) => entry.id !== id)];
+        saveArchive();
+      }
+    }
+
+    function moveCurrentToTrash() {
+      if (!state.players.length) return;
+      if (state.complete && state.archiveId) {
+        moveArchiveToTrash(state.archiveId);
+        return;
+      }
+      const id = state.archiveId || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      trash = trash.filter((entry) => entry.id !== id);
+      trash.unshift({
+        id,
+        groupId: state.groupId,
+        kind: "unfinished",
+        deletedAt: new Date().toISOString(),
+        completedAt: null,
+        snapshot: JSON.parse(JSON.stringify(state))
+      });
+      saveTrash();
+    }
+
+    function formatDate(value) {
+      return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short"
+      }).format(new Date(value));
+    }
+
+    function formatMatchDate(value) {
+      if (!value) return "Date unavailable";
+      return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+    }
+
+    function formatMatchTime(value) {
+      if (!value) return "Unknown";
+      return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(new Date(value));
+    }
+
+    function formatMatchDuration(startedAt, completedAt) {
+      if (!startedAt || !completedAt) return "Duration unavailable";
+      const start = new Date(startedAt).getTime();
+      const end = new Date(completedAt).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "Duration unavailable";
+      const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
+      const days = Math.floor(totalMinutes / 1440);
+      const hours = Math.floor((totalMinutes % 1440) / 60);
+      const minutes = totalMinutes % 60;
+      if (days) return `${days}d ${hours}h ${minutes}m`;
+      if (hours) return `${hours}h ${minutes}m`;
+      return `${minutes} min`;
+    }
+
+    function matchWinners(snapshot) {
+      if (!snapshot.players.length) return [];
+      const topScore = Math.max(...snapshot.players.map((player) => player.score));
+      return snapshot.players.filter((player) => player.score === topScore);
+    }
+
+    function renderHomeLeaderboard(records) {
+      const wins = new Map();
+      records.forEach((record) => {
+        matchWinners(record.snapshot).forEach((winner) => {
+          const key = winner.name.trim().toLocaleLowerCase();
+          const existing = wins.get(key) || { name: winner.name, avatar: winner.avatar, wins: 0 };
+          existing.name = winner.name;
+          existing.avatar = winner.avatar;
+          existing.wins += 1;
+          wins.set(key, existing);
+        });
+      });
+      const leaders = [...wins.values()].sort((a, b) => b.wins - a.wins || a.name.localeCompare(b.name));
+      $("homeLeaderboard").innerHTML = leaders.length ? leaders.map((player, index) => `
+        <div class="leader-row" style="--delay: ${index * 45}ms">
+          <div class="rank">${index + 1}</div>
+          ${avatarMarkup(player.avatar)}
+          <div class="leader-name">${escapeHtml(player.name)}</div>
+          <div class="leader-score">${player.wins} win${player.wins === 1 ? "" : "s"}</div>
+        </div>
+      `).join("") : `<div class="home-empty">Complete a match to start the leaderboard.</div>`;
+    }
+
+    function renderHomeCardArt(targetId, players) {
+      const recentPlayers = players;
+      const ranks = ["J", "Q", "K", "A"];
+      const suits = ["♣", "♦", "♥", "♠"];
+      const positions = [
+        { x: "-78px", y: "12px", rotation: "-15deg" },
+        { x: "-28px", y: "-7px", rotation: "-5deg" },
+        { x: "28px", y: "-7px", rotation: "5deg" },
+        { x: "78px", y: "12px", rotation: "15deg" }
+      ];
+      $(targetId).innerHTML = recentPlayers.slice(0, 4).reverse().map((player, index) => `
+        <div class="portrait-card"
+          style="--card-x: ${positions[index].x}; --card-y: ${positions[index].y}; --card-rotation: ${positions[index].rotation}; --card-delay: ${index * 90}ms"
+          aria-label="${escapeHtml(player.name)} playing card">
+          <span class="portrait-card-corner">${ranks[index]}<span>${suits[index]}</span></span>
+          <span class="portrait-card-person">
+            ${avatarMarkup(player.avatar)}
+            <span class="portrait-card-name">${escapeHtml(player.name)}</span>
+          </span>
+          <span class="portrait-card-corner">${ranks[index]}<span>${suits[index]}</span></span>
+        </div>
+      `).join("");
+    }
+
+    function archiveGameTable(snapshot) {
+      const headers = snapshot.players.map((player) => `<th>${escapeHtml(player.name)}</th>`).join("");
+      const rows = snapshot.history.map((game) => `
+        <tr>
+          <td>Game ${game.game}</td>
+          ${snapshot.players.map((player) => {
+            const result = game.results.find((entry) => entry.id === player.id);
+            return `<td class="${result && result.score >= 0 ? "positive" : "negative"}">${result ? formatScore(result.score) : "—"}</td>`;
+          }).join("")}
+        </tr>
+      `).join("");
+      return `<div class="history"><table><thead><tr><th>Game</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderArchive() {
+      const group = groupById(currentGroupId);
+      const records = groupArchive(currentGroupId);
+      const deletedRecords = groupTrash(currentGroupId);
+      renderHomeCardArt("homeCardArt", group ? group.members : []);
+      $("matchesPlayed").textContent = records.length;
+      $("gamesPlayed").textContent = records.reduce((sum, record) => sum + record.snapshot.history.length, 0);
+      const uniquePlayers = new Set(
+        records.flatMap((record) => record.snapshot.players.map((player) => player.name.trim().toLocaleLowerCase()))
+      );
+      $("playersTracked").textContent = uniquePlayers.size;
+      renderHomeLeaderboard(records);
+      $("archiveList").innerHTML = records.length ? records.map((record) => {
+        const snapshot = record.snapshot;
+        const completedAt = snapshot.completedAt || record.completedAt;
+        const duration = formatMatchDuration(snapshot.startedAt, completedAt);
+        const winners = matchWinners(snapshot);
+        const winnerText = winners.length === 1
+          ? `${escapeHtml(winners[0].name)} won`
+          : `${winners.map((winner) => escapeHtml(winner.name)).join(" & ")} tied`;
+        return `
+          <details class="archive-item card">
+            <summary aria-label="Open match history: ${winnerText}. ${formatMatchDate(snapshot.startedAt || completedAt)}. ${duration}. Started ${formatMatchTime(snapshot.startedAt)}. Ended ${formatMatchTime(completedAt)}.">
+              <span></span>
+              <span>
+                <span class="archive-winner">${winnerText}</span>
+                <span class="archive-date">${formatMatchDate(snapshot.startedAt || completedAt)} · ${snapshot.history.length} game${snapshot.history.length === 1 ? "" : "s"} · ${duration}</span>
+                <span class="archive-date">Started ${formatMatchTime(snapshot.startedAt)} · Ended ${formatMatchTime(completedAt)}</span>
+              </span>
+              <strong>${formatScore(winners[0]?.score || 0)}</strong>
+            </summary>
+            <div class="archive-body">
+              <div class="archive-scores">
+                ${[...snapshot.players].sort((a, b) => b.score - a.score).map((player) => `
+                  <span class="archive-score">${avatarMarkup(player.avatar)} ${escapeHtml(player.name)}: <strong>${formatScore(player.score)}</strong></span>
+                `).join("")}
+              </div>
+              ${archiveGameTable(snapshot)}
+              <div class="actions">
+                <button class="btn" type="button" data-edit-archive="${record.id}">Edit this match</button>
+                <button class="btn btn-danger" type="button" data-delete-archive="${record.id}">Delete history</button>
+              </div>
+            </div>
+          </details>
+        `;
+      }).join("") : `<div class="home-empty">No completed matches yet.</div>`;
+
+      document.querySelectorAll("[data-delete-archive]").forEach((button) => {
+        button.addEventListener("click", () => {
+          requestConfirmation("Move this completed match to Recently Deleted?", () => {
+            moveArchiveToTrash(button.dataset.deleteArchive);
+            renderArchive();
+          });
+        });
+      });
+      document.querySelectorAll("[data-edit-archive]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const record = archive.find((entry) => entry.id === button.dataset.editArchive);
+          const openRecord = () => {
+            Object.assign(state, JSON.parse(JSON.stringify(record.snapshot)));
+            state.archiveId = record.id;
+            if (!state.completedAt) state.completedAt = record.completedAt;
+            save();
+            beginEdit();
+          };
+          if (state.players.length && !state.complete) {
+            requestConfirmation("Editing an older match will replace the current unfinished match. Continue?", openRecord);
+          } else {
+            openRecord();
+          }
+        });
+      });
+
+      $("deletedList").innerHTML = deletedRecords.length ? deletedRecords.map((record) => {
+        const isUnfinished = record.kind === "unfinished";
+        const winners = isUnfinished ? [] : matchWinners(record.snapshot);
+        const winnerText = isUnfinished
+          ? `Unfinished match · Game ${record.snapshot.currentGame} of ${record.snapshot.totalGames}`
+          : winners.length === 1
+            ? `${escapeHtml(winners[0].name)} won`
+            : `${winners.map((winner) => escapeHtml(winner.name)).join(" & ")} tied`;
+        return `
+          <div class="deleted-item card">
+            <div>
+              <div class="archive-winner">${winnerText}</div>
+              <div class="archive-date">Deleted ${formatDate(record.deletedAt)} · ${record.snapshot.history.length} game${record.snapshot.history.length === 1 ? "" : "s"}</div>
+            </div>
+            <div class="deleted-actions">
+              <button class="btn" type="button" data-restore-archive="${record.id}">Restore</button>
+              <button class="btn btn-danger" type="button" data-permanent-delete="${record.id}">Delete permanently</button>
+            </div>
+          </div>
+        `;
+      }).join("") : `<div class="home-empty">Nothing has been deleted.</div>`;
+
+      document.querySelectorAll("[data-restore-archive]").forEach((button) => {
+        button.addEventListener("click", () => {
+          restoreFromTrash(button.dataset.restoreArchive);
+          showGroup(currentGroupId);
+        });
+      });
+      document.querySelectorAll("[data-permanent-delete]").forEach((button) => {
+        button.addEventListener("click", () => {
+          requestConfirmation("Permanently delete this match? This cannot be undone.", () => {
+            trash = trash.filter((entry) => entry.id !== button.dataset.permanentDelete);
+            saveTrash();
+            renderArchive();
+          });
+        });
+      });
+    }
+
+    function hideAllViews() {
+      ["homeView", "groupView", "setupView", "gameView", "winnerView", "editView"].forEach((id) => {
+        $(id).classList.add("hidden");
+      });
+    }
+
+    function backLabel() {
+      const group = groupById(currentGroupId);
+      return group ? `‹ ${group.name}` : "Home";
+    }
+
+    function discardPendingEdit() {
+      if (editSnapshot) {
+        Object.assign(state, JSON.parse(editSnapshot));
+        editSnapshot = null;
+      }
+    }
+
+    function groupLastActivity(group) {
+      const times = groupArchive(group.id).map((record) => record.snapshot.completedAt || record.completedAt);
+      const active = groupActiveMatch(group.id);
+      if (active?.startedAt) times.push(active.startedAt);
+      times.push(group.createdAt);
+      return times.filter(Boolean).sort().pop() || "";
+    }
+
+    function renderGlobalLeaderboard() {
+      const players = new Map();
+      archive.filter(isLiveRecord).forEach((record) => {
+        const winnerKeys = new Set(matchWinners(record.snapshot).map((winner) => avatarPreferenceKey(winner.name)));
+        record.snapshot.players.forEach((player) => {
+          const key = avatarPreferenceKey(player.name);
+          const entry = players.get(key) || { name: player.name, avatar: player.avatar, matches: 0, wins: 0 };
+          entry.matches += 1;
+          if (winnerKeys.has(key)) entry.wins += 1;
+          players.set(key, entry);
+        });
+      });
+      const rows = [...players.entries()]
+        .map(([key, entry]) => ({ ...entry, avatar: preferredAvatar(key, entry.avatar) }))
+        .sort((a, b) => b.wins - a.wins || a.matches - b.matches || a.name.localeCompare(b.name));
+      $("allPlayersTracked").textContent = rows.length;
+      $("globalLeaderboard").innerHTML = rows.length ? rows.map((player, index) => `
+        <div class="leader-row" style="--delay: ${index * 45}ms">
+          <div class="rank">${index + 1}</div>
+          ${avatarMarkup(player.avatar)}
+          <div class="leader-name">${escapeHtml(player.name)}
+            <div class="leader-meta">${player.matches} match${player.matches === 1 ? "" : "es"} played</div>
+          </div>
+          <div class="leader-score">${player.wins} win${player.wins === 1 ? "" : "s"}</div>
+        </div>
+      `).join("") : `<div class="home-empty">Complete a match to start the leaderboard.</div>`;
+    }
+
+    function showHome() {
+      discardPendingEdit();
+      currentGroupId = null;
+      hideAllViews();
+      $("homeView").classList.remove("hidden");
+      $("homeButton").classList.add("hidden");
+      $("editButton").classList.add("hidden");
+      $("undoButton").classList.add("hidden");
+      $("resetButton").classList.add("hidden");
+
+      const sortedGroups = liveGroups().sort((a, b) => groupLastActivity(b).localeCompare(groupLastActivity(a)));
+      $("groupsCount").textContent = sortedGroups.length;
+      $("allMatchesPlayed").textContent = archive.filter(isLiveRecord).length;
+      renderHomeCardArt("homeHeroArt", sortedGroups[0]?.members ||
+        AVATAR_OPTIONS.slice(0, 4).map((avatar, index) => ({ name: `Player ${index + 1}`, avatar })));
+      $("groupList").innerHTML = sortedGroups.length ? sortedGroups.map((group, index) => {
+        const records = groupArchive(group.id);
+        const lastPlayed = records.map((record) => record.snapshot.completedAt || record.completedAt).filter(Boolean).sort().pop();
+        const live = groupActiveMatch(group.id);
+        return `
+          <button class="group-card card" type="button" data-open-group="${group.id}" style="--delay: ${index * 55}ms"
+            aria-label="Open group ${escapeHtml(group.name)}">
+            <span>
+              <span class="group-card-name">${escapeHtml(group.name)}</span>${live ? `<span class="live-pill">In progress</span>` : ""}
+              <span class="archive-date">${records.length} match${records.length === 1 ? "" : "es"}${lastPlayed ? ` · Last played ${formatMatchDate(lastPlayed)}` : ""}</span>
+              <span class="active-players">
+                ${group.members.map((member) => `<span class="avatar-chip">${avatarMarkup(preferredAvatar(member.name, member.avatar))} ${escapeHtml(member.name)}</span>`).join("")}
+              </span>
+            </span>
+            <span class="group-card-open" aria-hidden="true">›</span>
+          </button>
+        `;
+      }).join("") : `<div class="home-empty">No groups yet. Create one for the people you play with.</div>`;
+      document.querySelectorAll("[data-open-group]").forEach((button) => {
+        button.addEventListener("click", () => showGroup(button.dataset.openGroup));
+      });
+      renderDeletedGroups();
+      renderGlobalLeaderboard();
+    }
+
+    function renderDeletedGroups() {
+      const deleted = groups
+        .filter((group) => group.deletedAt)
+        .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+      $("deletedGroupsSection").classList.toggle("hidden", deleted.length === 0);
+      $("deletedGroupList").innerHTML = deleted.map((group) => {
+        const matches = groupArchive(group.id).length;
+        return `
+          <div class="deleted-item card">
+            <div>
+              <div class="archive-winner">${escapeHtml(group.name)}</div>
+              <div class="archive-date">${group.members.map((member) => escapeHtml(member.name)).join(", ")}</div>
+              <div class="archive-date">Deleted ${formatDate(group.deletedAt)} · ${matches} match${matches === 1 ? "" : "es"}${groupActiveMatch(group.id) ? " · 1 unfinished" : ""}</div>
+            </div>
+            <div class="deleted-actions">
+              <button class="btn" type="button" data-restore-group="${group.id}">Restore</button>
+              <button class="btn btn-danger" type="button" data-purge-group="${group.id}">Delete permanently</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+      document.querySelectorAll("[data-restore-group]").forEach((button) => {
+        button.addEventListener("click", () => restoreGroup(button.dataset.restoreGroup));
+      });
+      document.querySelectorAll("[data-purge-group]").forEach((button) => {
+        button.addEventListener("click", () => purgeGroup(button.dataset.purgeGroup));
+      });
+    }
+
+    function restoreGroup(groupId) {
+      const group = groupById(groupId);
+      if (!group) return;
+      const taken = new Set(liveGroups().map((entry) => entry.name.trim().toLocaleLowerCase()));
+      let name = group.name;
+      for (let suffix = 2; taken.has(name.trim().toLocaleLowerCase()); suffix += 1) name = `${group.name} (${suffix})`;
+      group.name = name;
+      delete group.deletedAt;
+      saveGroups();
+      showHome();
+    }
+
+    function purgeGroup(groupId) {
+      const group = groupById(groupId);
+      if (!group) return;
+      const matches = groupArchive(group.id).length;
+      requestConfirmation(
+        `Permanently delete “${group.name}”${matches ? ` and its ${matches} match${matches === 1 ? "" : "es"}` : ""}? This cannot be undone.`,
+        () => {
+          groups = groups.filter((entry) => entry.id !== group.id);
+          archive = archive.filter((record) => recordGroupId(record) !== group.id);
+          trash = trash.filter((record) => recordGroupId(record) !== group.id);
+          delete activeByGroup[group.id];
+          saveGroups();
+          saveArchive();
+          saveTrash();
+          saveActiveByGroup();
+          showHome();
+        }
+      );
+    }
+
+    function showGroup(groupId) {
+      const group = groupById(groupId);
+      if (!group || group.deletedAt) {
+        showHome();
+        return;
+      }
+      discardPendingEdit();
+      currentGroupId = group.id;
+      enterGroupMatch(group.id);
+      hideAllViews();
+      $("groupView").classList.remove("hidden");
+      $("homeButton").textContent = "All groups";
+      $("homeButton").classList.remove("hidden");
+      $("editButton").classList.add("hidden");
+      $("undoButton").classList.add("hidden");
+      $("resetButton").classList.add("hidden");
+      $("groupTitle").textContent = group.name;
+      $("groupMembers").innerHTML = group.members.map((member) => `
+        <span class="avatar-chip">${avatarMarkup(preferredAvatar(member.name, member.avatar))} ${escapeHtml(member.name)}</span>
+      `).join("");
+      const hasActiveMatch = isInProgress(state);
+      $("activeMatchCard").classList.toggle("hidden", !hasActiveMatch);
+      if (hasActiveMatch) {
+        $("activeMatchTitle").textContent = `Game ${state.currentGame} of ${state.totalGames}`;
+        $("activeMatchText").textContent =
+          `${state.history.length} game${state.history.length === 1 ? "" : "s"} scored so far. Started ${formatMatchTime(state.startedAt)}.`;
+        $("activePlayers").innerHTML = state.players.map((player) => `
+          <span class="avatar-chip">${avatarMarkup(player.avatar)} ${escapeHtml(player.name)}</span>
+        `).join("");
+        $("endMatch").disabled = state.history.length === 0;
+      }
+      renderArchive();
+    }
+
+    function openGroupEditor(groupId = null) {
+      const group = groupById(groupId);
+      const members = group
+        ? group.members
+        : Array.from({ length: 4 }, (_, index) => ({ name: "", avatar: AVATAR_OPTIONS[index] }));
+      groupEditor = { groupId: group ? group.id : null, originalNames: members.map((member) => member.name) };
+      state.setupNames = members.map((member) => member.name);
+      state.setupAvatars = members.map((member, index) =>
+        preferredAvatar(member.name, member.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length])
+      );
+      $("playerCount").value = members.length;
+      $("groupName").value = group ? group.name : "";
+      $("groupEditorStep").textContent = group ? "Edit group" : "New group";
+      $("groupEditorTitle").textContent = group ? `Edit ${group.name}` : "Who is in this group?";
+      $("continueSetup").textContent = group ? "Save group" : "Create group";
+      $("groupError").classList.add("hidden");
+      $("deleteGroupArea").classList.toggle("hidden", !group);
+      if (group) {
+        const matches = groupArchive(group.id).length;
+        $("deleteGroup").disabled = false;
+        $("deleteGroupHint").textContent = matches || groupActiveMatch(group.id)
+          ? "Its matches go with it. You can restore it from Deleted groups on the home screen."
+          : "You can restore it from Deleted groups on the home screen.";
+      }
+      showSetup("players");
+    }
+
+    function showGroupError(message) {
+      $("groupError").textContent = message;
+      $("groupError").classList.remove("hidden");
+    }
+
+    function saveGroupFromEditor() {
+      renderNameFields();
+      const name = $("groupName").value.trim();
+      const count = clampInt($("playerCount").value, 2, 12, 4);
+      const members = state.setupNames.slice(0, count).map((memberName, index) => ({
+        name: memberName.trim() || `Player ${index + 1}`,
+        avatar: state.setupAvatars[index] || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]
+      }));
+      if (!name) {
+        showGroupError("Give this group a name.");
+        return;
+      }
+      const editingId = groupEditor?.groupId || null;
+      const clash = groups.find((group) =>
+        group.id !== editingId && !group.deletedAt && group.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase()
+      );
+      if (clash) {
+        showGroupError(`Another group is already called “${clash.name}”.`);
+        return;
+      }
+      const seen = new Set();
+      const duplicate = members.find((member) => {
+        const key = avatarPreferenceKey(member.name);
+        if (seen.has(key)) return true;
+        seen.add(key);
+        return false;
+      });
+      if (duplicate) {
+        showGroupError(`Each player needs a different name. “${duplicate.name}” appears more than once.`);
+        return;
+      }
+
+      let group = groupById(editingId);
+      if (group) {
+        const newKeys = new Set(members.map((member) => avatarPreferenceKey(member.name)));
+        let archiveChanged = false;
+        groupEditor.originalNames.slice(0, count).forEach((originalName, index) => {
+          if (!originalName || newKeys.has(avatarPreferenceKey(originalName))) return;
+          archiveChanged = propagatePlayerRename(originalName, members[index].name, members[index].avatar, group.id) || archiveChanged;
+          const liveMatches = [];
+          if (state.groupId === group.id) liveMatches.push(state);
+          if (activeByGroup[group.id]) liveMatches.push(activeByGroup[group.id]);
+          liveMatches.forEach((match) => {
+            match.players?.forEach((player) => {
+              if (avatarPreferenceKey(player.name) !== avatarPreferenceKey(originalName)) return;
+              player.name = members[index].name;
+              player.avatar = members[index].avatar;
+            });
+            match.history?.forEach((game) => game.results?.forEach((result) => {
+              if (avatarPreferenceKey(result.name) === avatarPreferenceKey(originalName)) result.name = members[index].name;
+            }));
+          });
+        });
+        if (archiveChanged) saveArchive();
+        saveActiveByGroup();
+        group.name = name;
+        group.members = members;
+      } else {
+        group = { id: newId(), name, members, createdAt: new Date().toISOString() };
+        groups.push(group);
+      }
+      members.forEach((member) => rememberAvatar(member.name, member.avatar));
+      saveGroups();
+      save();
+      groupEditor = null;
+      showGroup(group.id);
+    }
+
+    function deleteGroup() {
+      const group = groupById(groupEditor?.groupId);
+      if (!group) return;
+      requestConfirmation(`Delete the group “${group.name}”? You can restore it from the home screen.`, () => {
+        // Keep an unfinished match with the deleted group so restoring brings it back.
+        if (state.groupId === group.id) {
+          if (isInProgress(state)) activeByGroup[group.id] = JSON.parse(JSON.stringify(state));
+          Object.assign(state, emptyActiveState(null));
+        }
+        group.deletedAt = new Date().toISOString();
+        saveGroups();
+        saveActiveByGroup();
+        save();
+        groupEditor = null;
+        showHome();
+      });
+    }
+
+    function showSetup(step = "players") {
+      hideAllViews();
+      $("setupView").classList.remove("hidden");
+      $("homeButton").textContent = backLabel();
+      $("homeButton").classList.remove("hidden");
+      $("editButton").classList.add("hidden");
+      $("resetButton").classList.add("hidden");
+      $("undoButton").classList.add("hidden");
+      $("setupPlayers").classList.toggle("hidden", step !== "players");
+      $("setupGames").classList.toggle("hidden", step !== "games");
+      if (step === "players") renderNameFields();
+      if (step === "games") $("newMatchStep").textContent = `New match · ${groupById(currentGroupId)?.name || ""}`;
+    }
+
+    function startMatch() {
+      const group = groupById(currentGroupId);
+      if (!group) {
+        showHome();
+        return;
+      }
+      const totalGames = clampInt($("gameCount").value, 1, 100, 15);
+      const minimumDeclaration = clampInt($("minimumDeclaration").value, 1, 100, 3);
+      const players = group.members.map((member, index) => ({
+        id: index,
+        name: member.name,
+        avatar: preferredAvatar(member.name, member.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]),
+        score: 0,
+        adjustment: 0
+      }));
+      players.forEach((player) => rememberAvatar(player.name, player.avatar));
+      savePlayerDefaults(players);
+      Object.assign(state, {
+        players,
+        totalGames,
+        minimumDeclaration,
+        currentGame: 1,
+        phase: "declarations",
+        declarations: {},
+        andhi: {},
+        actuals: {},
+        history: [],
+        complete: false,
+        reviewing: false,
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        archiveId: null,
+        groupId: group.id
+      });
+      initializeGame();
+      save();
+      renderGame();
+    }
+
+    function initializeGame() {
+      state.players.forEach((player) => {
+        state.declarations[player.id] = state.minimumDeclaration;
+        state.andhi[player.id] = false;
+        state.actuals[player.id] = 0;
+      });
+    }
+
+    function calculateScore(playerId) {
+      const actual = state.actuals[playerId];
+      if (state.andhi[playerId]) return actual >= 5 ? 100 : -50;
+      const bid = state.declarations[playerId];
+      return actual >= bid && actual < bid * 2 ? bid * 10 + (actual - bid) : -bid * 10;
+    }
+
+    function calculateResultScore(result) {
+      if (result.andhi) return result.actual >= 5 ? 100 : -50;
+      return result.actual >= result.declaration && result.actual < result.declaration * 2
+        ? result.declaration * 10 + (result.actual - result.declaration)
+        : -result.declaration * 10;
+    }
+
+    function recalculateScores() {
+      state.players.forEach((player) => {
+        player.score = Number.isFinite(player.adjustment) ? player.adjustment : 0;
+      });
+      state.history.forEach((game, gameIndex) => {
+        game.game = gameIndex + 1;
+        game.results = state.players.map((player) => {
+          const existing = game.results.find((result) => result.id === player.id) || {
+            id: player.id,
+            declaration: state.minimumDeclaration,
+            andhi: false,
+            actual: 0
+          };
+          existing.name = player.name;
+          existing.declaration = existing.andhi
+            ? 5
+            : Math.max(state.minimumDeclaration, Number(existing.declaration) || state.minimumDeclaration);
+          existing.actual = Math.max(0, Number(existing.actual) || 0);
+          existing.andhi = Boolean(existing.andhi);
+          existing.score = calculateResultScore(existing);
+          player.score += existing.score;
+          return existing;
+        });
+      });
+    }
+
+    function sortedPlayers() {
+      return [...state.players].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    }
+
+    function renderLeaderboard(targetId = "leaderboardRows") {
+      $(targetId).innerHTML = sortedPlayers().map((player, index) => `
+        <div class="leader-row" style="--delay: ${index * 45}ms">
+          <div class="rank">${index + 1}</div>
+          ${avatarMarkup(player.avatar)}
+          <div class="leader-name">${escapeHtml(player.name)}</div>
+          <div class="leader-score ${player.score < 0 ? "negative" : ""}">${formatScore(player.score)}</div>
+        </div>
+      `).join("");
+    }
+
+    function formatScore(score) {
+      return score > 0 ? `+${score}` : String(score);
+    }
+
+    function renderGame() {
+      $("homeView").classList.add("hidden");
+      $("groupView").classList.add("hidden");
+      $("homeButton").textContent = backLabel();
+      $("setupView").classList.add("hidden");
+      $("winnerView").classList.add("hidden");
+      $("editView").classList.add("hidden");
+      $("gameView").classList.remove("hidden");
+      $("homeButton").classList.remove("hidden");
+      $("editButton").classList.remove("hidden");
+      $("resetButton").classList.remove("hidden");
+      $("undoButton").classList.toggle("hidden", state.history.length === 0 || !state.reviewing && state.phase !== "declarations");
+
+      if (state.reviewing) {
+        $("phasePill").textContent = "Match review";
+        $("gameTitle").textContent = "Final scores";
+        $("gameHint").textContent = "Review every game and the final leaderboard.";
+        $("progressText").textContent = `${state.totalGames} games`;
+        $("playerRows").classList.add("hidden");
+        $("phaseButton").classList.add("hidden");
+        $("historyCard").classList.remove("hidden");
+        renderHistory();
+        renderLeaderboard();
+        return;
+      }
+
+      $("playerRows").classList.remove("hidden");
+      $("phaseButton").classList.remove("hidden");
+      $("historyCard").classList.toggle("hidden", state.history.length === 0);
+      $("gameTitle").textContent = `Game ${state.currentGame}`;
+      $("progressText").textContent = `${state.currentGame} of ${state.totalGames}`;
+      $("phasePill").textContent = state.phase === "declarations" ? "Declare groups" : "Enter results";
+      $("gameHint").textContent = state.phase === "declarations"
+        ? `Set each player’s declaration. Minimum is ${state.minimumDeclaration}, or choose Andhi for a locked 5.`
+        : "Enter the groups each player actually won.";
+      $("phaseButton").textContent = state.phase === "declarations"
+        ? "Lock declarations"
+        : state.currentGame === state.totalGames ? "Finish match" : "Score game";
+      renderPlayerRows();
+      renderLeaderboard();
+      renderHistory();
+      updateWarning();
+    }
+
+    function renderPlayerRows() {
+      const declarationsPhase = state.phase === "declarations";
+      $("playerRows").innerHTML = state.players.map((player, index) => {
+        const value = declarationsPhase ? state.declarations[player.id] : state.actuals[player.id];
+        const isAndhi = state.andhi[player.id];
+        const preview = declarationsPhase ? "" : formatScore(calculateScore(player.id));
+        const previewClass = declarationsPhase ? "" : calculateScore(player.id) >= 0 ? "positive" : "negative";
+        const subtitle = declarationsPhase
+          ? isAndhi ? "Andhi: needs 5+ groups" : `Normal declaration: ${state.declarations[player.id]}`
+          : isAndhi ? "Andhi declared" : `Declared ${state.declarations[player.id]}`;
+        return `
+          <div class="player-row card" data-player-row="${player.id}" style="--delay: ${index * 55}ms">
+            <div class="player-identity">
+              ${avatarMarkup(player.avatar, "avatar-large")}
+              <div>
+                <div class="player-name">${escapeHtml(player.name)}</div>
+                <div class="player-sub" data-player-sub="${player.id}">${subtitle}</div>
+              </div>
+            </div>
+            <div class="score-controls">
+              <div class="stepper">
+                <button type="button" data-adjust="${player.id}" data-delta="-1" aria-label="Decrease"
+                  ${declarationsPhase && (isAndhi || value <= state.minimumDeclaration) ? "disabled" : ""}>−</button>
+                <input type="number" inputmode="numeric"
+                  value="${declarationsPhase || value ? value : ""}" placeholder="${declarationsPhase ? "" : "0"}"
+                  min="${declarationsPhase ? state.minimumDeclaration : 0}" data-score-value="${player.id}"
+                  ${declarationsPhase && isAndhi ? "disabled" : ""}
+                  aria-label="${declarationsPhase ? "Declared groups" : "Groups made"} for ${escapeHtml(player.name)}" />
+                <button type="button" data-adjust="${player.id}" data-delta="1" aria-label="Increase"
+                  ${declarationsPhase && isAndhi ? "disabled" : ""}>+</button>
+              </div>
+              ${declarationsPhase ? `
+                <button type="button" class="andhi-toggle ${isAndhi ? "active" : ""}"
+                  data-andhi="${player.id}" aria-label="Andhi for ${escapeHtml(player.name)}"
+                  aria-pressed="${isAndhi}">Andhi</button>
+              ` : `<div class="preview ${previewClass}" data-preview="${player.id}">${preview}</div>`}
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      document.querySelectorAll("[data-adjust]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const id = Number(button.dataset.adjust);
+          const delta = Number(button.dataset.delta);
+          if (state.phase === "declarations") {
+            if (state.andhi[id]) return;
+            state.declarations[id] = Math.max(state.minimumDeclaration, state.declarations[id] + delta);
+          } else {
+            state.actuals[id] = Math.max(0, state.actuals[id] + delta);
+          }
+          save();
+          updatePlayerRow(id);
+          updateWarning();
+        });
+      });
+
+      document.querySelectorAll("[data-score-value]").forEach((input) => {
+        let commitTimer;
+        input.addEventListener("focus", () => input.select());
+        const updateValue = (syncInput) => {
+          if (input.value === "" && !syncInput) return;
+          const id = Number(input.dataset.scoreValue);
+          const minimum = state.phase === "declarations" ? state.minimumDeclaration : 0;
+          const value = Math.max(minimum, Number.parseInt(input.value, 10) || minimum);
+          if (state.phase === "declarations") state.declarations[id] = value;
+          else state.actuals[id] = value;
+          save();
+          updatePlayerRow(id, syncInput);
+          updateWarning();
+        };
+        input.addEventListener("input", () => {
+          updateValue(false);
+          window.clearTimeout(commitTimer);
+          commitTimer = window.setTimeout(() => input.blur(), 650);
+        });
+        input.addEventListener("change", () => updateValue(true));
+      });
+
+      document.querySelectorAll("[data-andhi]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const id = Number(button.dataset.andhi);
+          state.andhi[id] = !state.andhi[id];
+          state.declarations[id] = state.andhi[id] ? 5 : state.minimumDeclaration;
+          save();
+          updatePlayerRow(id);
+        });
+      });
+    }
+
+    function updatePlayerRow(playerId, syncInput = true) {
+      const row = document.querySelector(`[data-player-row="${playerId}"]`);
+      if (!row) return;
+      const declarationsPhase = state.phase === "declarations";
+      const value = declarationsPhase ? state.declarations[playerId] : state.actuals[playerId];
+      const isAndhi = state.andhi[playerId];
+      const input = row.querySelector("[data-score-value]");
+      if (syncInput) input.value = declarationsPhase || value ? value : "";
+      if (declarationsPhase) input.disabled = isAndhi;
+      const decreaseButton = row.querySelector('[data-adjust][data-delta="-1"]');
+      const increaseButton = row.querySelector('[data-adjust][data-delta="1"]');
+      if (decreaseButton) decreaseButton.disabled = declarationsPhase && (isAndhi || value <= state.minimumDeclaration);
+      if (increaseButton) increaseButton.disabled = declarationsPhase && isAndhi;
+      row.querySelector("[data-player-sub]").textContent = declarationsPhase
+        ? isAndhi ? "Andhi: needs 5+ groups" : `Normal declaration: ${state.declarations[playerId]}`
+        : isAndhi ? "Andhi declared" : `Declared ${state.declarations[playerId]}`;
+      const andhiButton = row.querySelector("[data-andhi]");
+      if (andhiButton) {
+        andhiButton.classList.toggle("active", isAndhi);
+        andhiButton.setAttribute("aria-pressed", String(isAndhi));
+      }
+      const preview = row.querySelector("[data-preview]");
+      if (preview) {
+        const score = calculateScore(playerId);
+        preview.textContent = formatScore(score);
+        preview.classList.toggle("positive", score >= 0);
+        preview.classList.toggle("negative", score < 0);
+      }
+    }
+
+    function updateWarning() {
+      const banner = $("warningBanner");
+      $("phaseButton").disabled = false;
+      if (state.phase !== "results") {
+        banner.classList.add("hidden");
+        return;
+      }
+      const actualTotal = Object.values(state.actuals).reduce((sum, value) => sum + value, 0);
+      if (actualTotal !== GROUPS_PER_GAME) {
+        const remaining = GROUPS_PER_GAME - actualTotal;
+        banner.textContent = remaining > 0
+          ? `${actualTotal} of ${GROUPS_PER_GAME} groups entered. Add ${remaining} more before scoring.`
+          : `${actualTotal} groups entered. Remove ${Math.abs(remaining)} before scoring; the total must be ${GROUPS_PER_GAME}.`;
+        banner.classList.remove("hidden");
+      } else {
+        banner.classList.add("hidden");
+      }
+    }
+
+    function syncVisibleScoreInputs() {
+      document.querySelectorAll("[data-score-value]").forEach((input) => {
+        const id = Number(input.dataset.scoreValue);
+        const minimum = state.phase === "declarations" ? state.minimumDeclaration : 0;
+        if (state.phase === "declarations" && state.andhi[id]) {
+          state.declarations[id] = 5;
+          input.value = 5;
+          return;
+        }
+        const value = Math.max(minimum, Number.parseInt(input.value, 10) || minimum);
+        if (state.phase === "declarations") state.declarations[id] = value;
+        else state.actuals[id] = value;
+        input.value = value;
+      });
+      save();
+    }
+
+    function advancePhase() {
+      syncVisibleScoreInputs();
+      if (state.phase === "declarations") {
+        state.phase = "results";
+        save();
+        renderGame();
+        return;
+      }
+      const actualTotal = Object.values(state.actuals).reduce((sum, value) => sum + value, 0);
+      if (actualTotal !== GROUPS_PER_GAME) {
+        updateWarning();
+        window.alert(`Actual groups must total exactly ${GROUPS_PER_GAME} before scoring.`);
+        return;
+      }
+
+      const gameResult = {
+        game: state.currentGame,
+        results: state.players.map((player) => ({
+          id: player.id,
+          name: player.name,
+          declaration: state.declarations[player.id],
+          andhi: state.andhi[player.id],
+          actual: state.actuals[player.id],
+          score: calculateScore(player.id)
+        }))
+      };
+      gameResult.results.forEach((result) => {
+        state.players.find((player) => player.id === result.id).score += result.score;
+      });
+      state.history.push(gameResult);
+
+      if (state.currentGame >= state.totalGames) {
+        state.complete = true;
+        state.completedAt = new Date().toISOString();
+        archiveCurrentMatch();
+        save();
+        renderWinner();
+        return;
+      }
+
+      state.currentGame += 1;
+      state.phase = "declarations";
+      initializeGame();
+      save();
+      renderGame();
+    }
+
+    function renderHistory() {
+      if (state.history.length === 0) {
+        $("historyCard").classList.add("hidden");
+        return;
+      }
+      $("historyCard").classList.remove("hidden");
+      const headers = state.players.map((player) => `<th>${escapeHtml(player.name)}</th>`).join("");
+      const rows = state.history.map((game) => `
+        <tr>
+          <td>Game ${game.game}</td>
+          ${game.results.map((result) => `
+            <td class="${result.score >= 0 ? "positive" : "negative"}" title="${result.andhi ? "Andhi" : `Declared ${result.declaration}`}, made ${result.actual}">
+              ${formatScore(result.score)}
+            </td>
+          `).join("")}
+        </tr>
+      `).join("");
+      $("historyTable").innerHTML = `<table><thead><tr><th>Game</th>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderWinner() {
+      window.scrollTo(0, 0);
+      $("homeView").classList.add("hidden");
+      $("groupView").classList.add("hidden");
+      $("homeButton").textContent = backLabel();
+      $("setupView").classList.add("hidden");
+      $("gameView").classList.add("hidden");
+      $("editView").classList.add("hidden");
+      $("winnerView").classList.remove("hidden");
+      $("homeButton").classList.remove("hidden");
+      $("editButton").classList.remove("hidden");
+      $("resetButton").classList.remove("hidden");
+      $("undoButton").classList.remove("hidden");
+      const leaders = sortedPlayers();
+      const bestScore = leaders[0].score;
+      const winners = leaders.filter((player) => player.score === bestScore);
+      $("winnerCelebration").innerHTML = `
+        <span class="winner-suit winner-suit-one" aria-hidden="true">♥</span>
+        <span class="winner-suit winner-suit-two" aria-hidden="true">♠</span>
+        <span class="winner-suit winner-suit-three" aria-hidden="true">♦</span>
+        ${winners.map((player, index) => `
+          <div class="winner-dancer-shell" style="--delay: ${index * 140}ms">
+            <div class="winner-dancer">
+              <span class="winner-crown" aria-hidden="true">👑</span>
+              ${avatarMarkup(player.avatar, "winner-avatar")}
+              <strong>${escapeHtml(player.name)}</strong>
+            </div>
+          </div>
+        `).join("")}
+      `;
+      $("winnerTitle").textContent = winners.length === 1 ? `${winners[0].name} wins!` : "It’s a tie!";
+      $("winnerText").textContent = winners.length === 1
+        ? `Finished with ${formatScore(bestScore)} points after ${state.totalGames} games in ${formatMatchDuration(state.startedAt, state.completedAt)}.`
+        : `${winners.map((player) => player.name).join(" & ")} share first place with ${formatScore(bestScore)} points after ${formatMatchDuration(state.startedAt, state.completedAt)}.`;
+      $("winnerList").innerHTML = leaders.map((player, index) => `
+        <div class="winner-row card" style="--delay: ${index * 70}ms">
+          <div class="winner-player">
+            ${avatarMarkup(player.avatar)}
+            <strong>${index + 1}. ${escapeHtml(player.name)}</strong>
+          </div>
+          <strong class="${player.score < 0 ? "negative" : ""}">${formatScore(player.score)}</strong>
+        </div>
+      `).join("");
+      launchConfetti();
+    }
+
+    function launchConfetti() {
+      document.querySelectorAll(".confetti").forEach((piece) => piece.remove());
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      for (let index = 0; index < 28; index += 1) {
+        const piece = document.createElement("span");
+        piece.className = "confetti";
+        piece.style.left = `${3 + Math.random() * 94}%`;
+        piece.style.setProperty("--delay", `${Math.random() * 0.8}s`);
+        piece.style.setProperty("--duration", `${2.8 + Math.random() * 1.8}s`);
+        piece.style.setProperty("--drift", `${-90 + Math.random() * 180}px`);
+        document.body.appendChild(piece);
+        window.setTimeout(() => piece.remove(), 5200);
+      }
+    }
+
+    function undoLastGame() {
+      if (state.history.length === 0) return;
+      unarchiveCurrentMatch();
+      const last = state.history.pop();
+      last.results.forEach((result) => {
+        state.players.find((player) => player.id === result.id).score -= result.score;
+      });
+      state.currentGame = last.game;
+      state.phase = "results";
+      state.complete = false;
+      state.reviewing = false;
+      state.completedAt = null;
+      last.results.forEach((result) => {
+        state.declarations[result.id] = result.declaration;
+        state.andhi[result.id] = result.andhi;
+        state.actuals[result.id] = result.actual;
+      });
+      save();
+      renderGame();
+    }
+
+    function editResultRows(results, prefix) {
+      return state.players.map((player) => {
+        const result = results.find((entry) => entry.id === player.id) || {
+          id: player.id,
+          declaration: state.minimumDeclaration,
+          actual: 0,
+          andhi: false
+        };
+        if (result.andhi) result.declaration = 5;
+        return `
+          <div class="editor-result">
+            <strong>${escapeHtml(player.name)}</strong>
+            <div class="field">
+              <label>Declared</label>
+              <input type="number" min="${state.minimumDeclaration}" inputmode="numeric" value="${result.declaration}"
+                ${result.andhi ? "disabled" : ""}
+                aria-label="Declared groups for ${escapeHtml(player.name)} in ${prefix === "current" ? "current game" : `game ${Number(prefix) + 1}`}"
+                data-edit-result="${prefix}" data-player-id="${player.id}" data-result-field="declaration" />
+            </div>
+            <div class="field">
+              <label>Made</label>
+              <input type="number" min="0" inputmode="numeric" value="${result.actual}"
+                data-edit-result="${prefix}" data-player-id="${player.id}" data-result-field="actual" />
+            </div>
+            <label class="checkbox-field">
+              <input type="checkbox" ${result.andhi ? "checked" : ""}
+                data-edit-result="${prefix}" data-player-id="${player.id}" data-result-field="andhi" />
+              Andhi
+            </label>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderEditor() {
+      $("homeView").classList.add("hidden");
+      $("groupView").classList.add("hidden");
+      $("homeButton").textContent = backLabel();
+      $("setupView").classList.add("hidden");
+      $("gameView").classList.add("hidden");
+      $("winnerView").classList.add("hidden");
+      $("editView").classList.remove("hidden");
+      $("homeButton").classList.remove("hidden");
+      $("editButton").classList.add("hidden");
+      $("undoButton").classList.add("hidden");
+      $("resetButton").classList.remove("hidden");
+      $("editTotalGames").value = state.totalGames;
+      $("editMinimumDeclaration").value = state.minimumDeclaration;
+
+      $("editPlayers").innerHTML = state.players.map((player, index) => `
+        <div class="editor-player card reorder-item" data-editor-player="${player.id}">
+          <button class="drag-handle" type="button" data-editor-drag="${player.id}"
+            aria-label="Drag ${escapeHtml(player.name)} to reorder">☰<span>Player ${index + 1}</span></button>
+          <div class="avatar-stack">
+            <button class="avatar-button" type="button" data-pick-player-avatar="${player.id}"
+              aria-label="Change ${escapeHtml(player.name)} avatar">${avatarMarkup(player.avatar)}</button>
+            <span class="muted small">Tap to choose</span>
+          </div>
+          <div class="field">
+            <label>Player name</label>
+            <input type="text" maxlength="28" value="${escapeHtml(player.name)}"
+              data-edit-name="${player.id}" aria-label="Player name for ${escapeHtml(player.name)}" />
+          </div>
+          <div class="field">
+            <label>Score adjustment</label>
+            <input type="number" inputmode="numeric" value="${player.adjustment || 0}" data-edit-adjustment="${player.id}" />
+          </div>
+          <button class="btn btn-danger" type="button" data-remove-player="${player.id}"
+            ${state.players.length <= 2 ? "disabled" : ""}>Remove</button>
+        </div>
+      `).join("");
+
+      const hasCurrentGame = state.history.length < state.totalGames;
+      $("editCurrentSection").classList.toggle("hidden", !hasCurrentGame);
+      if (hasCurrentGame) {
+        $("editCurrentTitle").textContent = `Current game ${state.history.length + 1}`;
+        const currentResults = state.players.map((player) => ({
+          id: player.id,
+          declaration: state.declarations[player.id] || state.minimumDeclaration,
+          actual: state.actuals[player.id] || 0,
+          andhi: Boolean(state.andhi[player.id])
+        }));
+        $("editCurrentGame").innerHTML = editResultRows(currentResults, "current");
+      }
+
+      $("editHistorySection").classList.toggle("hidden", state.history.length === 0);
+      $("editHistory").innerHTML = state.history.map((game, index) => `
+        <div class="editor-game card">
+          <div class="editor-game-header">
+            <strong>Game ${index + 1}</strong>
+            <button class="btn btn-danger" type="button" data-delete-game="${index}"
+              ${state.complete && state.history.length <= 1 ? "disabled title=\"A completed match must keep at least one game\"" : ""}>
+              Delete this game
+            </button>
+          </div>
+          ${editResultRows(game.results, String(index))}
+        </div>
+      `).join("");
+
+      bindEditorEvents();
+      bindPointerReorder(
+        $("editPlayers"),
+        "[data-editor-player]",
+        "[data-editor-drag]",
+        (fromIndex, toIndex) => {
+          moveArrayItem(state.players, fromIndex, toIndex);
+          renderEditor();
+        }
+      );
+    }
+
+    function bindEditorEvents() {
+      $("editTotalGames").addEventListener("input", () => {
+        state.totalGames = clampInt($("editTotalGames").value, 1, 100, state.totalGames);
+      });
+      $("editMinimumDeclaration").addEventListener("input", () => {
+        state.minimumDeclaration = clampInt(
+          $("editMinimumDeclaration").value,
+          1,
+          100,
+          state.minimumDeclaration
+        );
+      });
+      document.querySelectorAll("[data-edit-name]").forEach((input) => {
+        input.addEventListener("input", () => {
+          state.players.find((player) => player.id === Number(input.dataset.editName)).name = input.value;
+        });
+        input.addEventListener("change", () => {
+          const player = state.players.find((entry) => entry.id === Number(input.dataset.editName));
+          if (player) rememberAvatar(player.name, player.avatar);
+        });
+      });
+      document.querySelectorAll("[data-edit-adjustment]").forEach((input) => {
+        input.addEventListener("input", () => {
+          state.players.find((player) => player.id === Number(input.dataset.editAdjustment)).adjustment =
+            Number.parseInt(input.value, 10) || 0;
+        });
+      });
+      document.querySelectorAll("[data-pick-player-avatar]").forEach((button) => {
+        button.addEventListener("click", () => {
+          openAvatarPicker("player", Number(button.dataset.pickPlayerAvatar));
+        });
+      });
+      document.querySelectorAll("[data-edit-result]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const playerId = Number(input.dataset.playerId);
+          const field = input.dataset.resultField;
+          const prefix = input.dataset.editResult;
+          if (prefix === "current") {
+            if (field === "declaration") {
+              state.declarations[playerId] = Math.max(
+                state.minimumDeclaration,
+                Number(input.value) || state.minimumDeclaration
+              );
+            }
+            if (field === "actual") state.actuals[playerId] = Math.max(0, Number(input.value) || 0);
+            if (field === "andhi") {
+              state.andhi[playerId] = input.checked;
+              state.declarations[playerId] = input.checked ? 5 : state.minimumDeclaration;
+              renderEditor();
+            }
+            return;
+          }
+          const result = state.history[Number(prefix)].results.find((entry) => entry.id === playerId);
+          if (field === "declaration") {
+            result.declaration = Math.max(
+              state.minimumDeclaration,
+              Number(input.value) || state.minimumDeclaration
+            );
+          }
+          if (field === "actual") result.actual = Math.max(0, Number(input.value) || 0);
+          if (field === "andhi") {
+            result.andhi = input.checked;
+            result.declaration = input.checked ? 5 : state.minimumDeclaration;
+            renderEditor();
+          }
+        });
+      });
+      document.querySelectorAll("[data-remove-player]").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (state.players.length <= 2) return;
+          const id = Number(button.dataset.removePlayer);
+          state.players = state.players.filter((player) => player.id !== id);
+          state.history.forEach((game) => {
+            game.results = game.results.filter((result) => result.id !== id);
+          });
+          delete state.declarations[id];
+          delete state.actuals[id];
+          delete state.andhi[id];
+          renderEditor();
+        });
+      });
+      document.querySelectorAll("[data-delete-game]").forEach((button) => {
+        button.addEventListener("click", () => {
+          requestConfirmation(`Delete Game ${Number(button.dataset.deleteGame) + 1} from this match?`, () => {
+            const wasComplete = state.complete;
+            state.history.splice(Number(button.dataset.deleteGame), 1);
+            state.history.forEach((game, index) => { game.game = index + 1; });
+            state.totalGames = wasComplete
+              ? Math.max(1, state.history.length)
+              : Math.max(state.totalGames, state.history.length + 1);
+            renderEditor();
+          });
+        });
+      });
+    }
+
+    function beginEdit() {
+      editSnapshot = JSON.stringify(state);
+      renderEditor();
+    }
+
+    function cancelEdit() {
+      if (editSnapshot) Object.assign(state, JSON.parse(editSnapshot));
+      editSnapshot = null;
+      renderCurrentView();
+    }
+
+    function saveEdit() {
+      const wasComplete = state.complete;
+      const previousPlayers = editSnapshot ? JSON.parse(editSnapshot).players || [] : [];
+      state.totalGames = clampInt($("editTotalGames").value, 1, 100, state.totalGames);
+      state.minimumDeclaration = clampInt($("editMinimumDeclaration").value, 1, 100, state.minimumDeclaration);
+      if (state.totalGames < state.history.length) state.totalGames = state.history.length;
+      state.players.forEach((player) => {
+        if (state.andhi[player.id]) state.declarations[player.id] = 5;
+        else state.declarations[player.id] = Math.max(
+          state.minimumDeclaration,
+          Number(state.declarations[player.id]) || state.minimumDeclaration
+        );
+      });
+      state.history.forEach((game) => {
+        game.results.forEach((result) => {
+          result.declaration = result.andhi
+            ? 5
+            : Math.max(state.minimumDeclaration, Number(result.declaration) || state.minimumDeclaration);
+        });
+      });
+      const invalidGame = state.history.find((game) =>
+        game.results.reduce((sum, result) => sum + (Number(result.actual) || 0), 0) !== GROUPS_PER_GAME
+      );
+      if (invalidGame) {
+        window.alert(`Game ${invalidGame.game} must have exactly ${GROUPS_PER_GAME} actual groups.`);
+        return;
+      }
+      state.players.forEach((player, index) => {
+        player.name = player.name.trim() || `Player ${index + 1}`;
+      });
+      let archiveChanged = false;
+      state.players.forEach((player) => {
+        const previous = previousPlayers.find((entry) => entry.id === player.id);
+        if (previous && avatarPreferenceKey(previous.name) !== avatarPreferenceKey(player.name)) {
+          archiveChanged = propagatePlayerRename(previous.name, player.name, player.avatar, state.groupId) || archiveChanged;
+        }
+      });
+      if (archiveChanged) saveArchive();
+      savePlayerDefaults(state.players);
+      recalculateScores();
+      if (state.history.length >= state.totalGames) {
+        state.complete = true;
+        state.reviewing = false;
+        state.currentGame = state.totalGames;
+        if (!state.completedAt) state.completedAt = new Date().toISOString();
+        archiveCurrentMatch();
+      } else {
+        if (wasComplete) unarchiveCurrentMatch();
+        state.complete = false;
+        state.reviewing = false;
+        state.completedAt = null;
+        state.currentGame = state.history.length + 1;
+        if (wasComplete) initializeGame();
+      }
+      editSnapshot = null;
+      save();
+      renderCurrentView();
+    }
+
+    function addPlayer() {
+      const nextId = state.players.reduce((max, player) => Math.max(max, player.id), -1) + 1;
+      state.players.push({
+        id: nextId,
+        name: `Player ${state.players.length + 1}`,
+        avatar: AVATAR_OPTIONS[state.players.length % AVATAR_OPTIONS.length],
+        score: 0,
+        adjustment: 0
+      });
+      state.declarations[nextId] = state.minimumDeclaration;
+      state.actuals[nextId] = 0;
+      state.andhi[nextId] = false;
+      state.history.forEach((game) => {
+        game.results.push({
+          id: nextId,
+          name: `Player ${state.players.length}`,
+          declaration: state.minimumDeclaration,
+          actual: 0,
+          andhi: false,
+          score: -state.minimumDeclaration * 10
+        });
+      });
+      renderEditor();
+    }
+
+    function renderCurrentView() {
+      if (state.complete && !state.reviewing) renderWinner();
+      else renderGame();
+    }
+
+    function resetMatch() {
+      requestConfirmation("Move the current match to Recently Deleted?", () => {
+        moveCurrentToTrash();
+        clearActiveMatch();
+        $("gameCount").value = 15;
+        $("minimumDeclaration").value = 3;
+        showGroup(currentGroupId);
+      });
+    }
+
+    function startNewMatch() {
+      const start = () => {
+        if (state.players.length && !state.complete) moveCurrentToTrash();
+        clearActiveMatch();
+        $("gameCount").value = 15;
+        $("minimumDeclaration").value = 3;
+        showSetup("games");
+      };
+      if (state.players.length && !state.complete) {
+        requestConfirmation("Delete the unfinished match and start a new one?", start);
+      } else {
+        start();
+      }
+    }
+
+    function endCurrentMatch() {
+      if (state.history.length === 0) return;
+      requestConfirmation(
+        `End this match after ${state.history.length} completed game${state.history.length === 1 ? "" : "s"}?`,
+        () => {
+          state.totalGames = state.history.length;
+          state.currentGame = state.history.length;
+          state.complete = true;
+          state.reviewing = false;
+          state.completedAt = new Date().toISOString();
+          recalculateScores();
+          archiveCurrentMatch();
+          save();
+          renderWinner();
+        }
+      );
+    }
+
+    function goHome() {
+      const onGroupScreen = !$("groupView").classList.contains("hidden");
+      if (onGroupScreen || !groupById(currentGroupId)) showHome();
+      else showGroup(currentGroupId);
+      save();
+    }
+
+    $("playerCount").addEventListener("change", renderNameFields);
+    $("continueSetup").addEventListener("click", saveGroupFromEditor);
+    $("cancelGroupEdit").addEventListener("click", () => {
+      groupEditor = null;
+      goHome();
+    });
+    $("deleteGroup").addEventListener("click", deleteGroup);
+    $("newGroup").addEventListener("click", () => openGroupEditor());
+    $("editGroup").addEventListener("click", () => openGroupEditor(currentGroupId));
+    $("backSetup").addEventListener("click", () => showGroup(currentGroupId));
+    $("startMatch").addEventListener("click", startMatch);
+    const dismissInputKeyboard = () => {
+      if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+    };
+    const dismissInputForButton = (event) => {
+      if (event.target instanceof Element && event.target.closest("button")) dismissInputKeyboard();
+    };
+    document.addEventListener("touchstart", dismissInputForButton, { capture: true, passive: true });
+    document.addEventListener("pointerdown", dismissInputForButton, true);
+    document.addEventListener("mousedown", dismissInputForButton, true);
+    $("phaseButton").addEventListener("click", advancePhase);
+    $("homeButton").addEventListener("click", goHome);
+    $("editButton").addEventListener("click", beginEdit);
+    $("undoButton").addEventListener("click", undoLastGame);
+    $("resetButton").addEventListener("click", resetMatch);
+    $("reviewMatch").addEventListener("click", () => {
+      state.reviewing = true;
+      renderGame();
+    });
+    $("newMatch").addEventListener("click", startNewMatch);
+    $("newHomeMatch").addEventListener("click", startNewMatch);
+    $("resumeMatch").addEventListener("click", renderGame);
+    $("endMatch").addEventListener("click", endCurrentMatch);
+    $("deleteMatch").addEventListener("click", resetMatch);
+    $("addPlayer").addEventListener("click", addPlayer);
+    $("cancelEdit").addEventListener("click", cancelEdit);
+    $("saveEdit").addEventListener("click", saveEdit);
+    $("closeAvatarPicker").addEventListener("click", closeAvatarPicker);
+    $("avatarPickerModal").addEventListener("click", (event) => {
+      if (event.target === $("avatarPickerModal")) closeAvatarPicker();
+    });
+    $("avatarPhotoInput").addEventListener("change", (event) => {
+      openPhotoCropper(event.target.files[0]);
+    });
+    $("cropZoom").addEventListener("input", (event) => {
+      if (!photoCrop) return;
+      photoCrop.zoom = Number(event.target.value);
+      $("cropZoomValue").textContent = `${Math.round(photoCrop.zoom * 100)}%`;
+      drawPhotoCrop();
+    });
+    $("cropStage").addEventListener("pointerdown", (event) => {
+      if (!photoCrop) return;
+      event.preventDefault();
+      $("cropStage").setPointerCapture(event.pointerId);
+      cropPointers.set(event.pointerId, cropPointerPosition(event));
+      $("cropStage").classList.add("dragging");
+      resetCropGesture();
+    });
+    $("cropStage").addEventListener("pointermove", (event) => {
+      if (!photoCrop || !cropPointers.has(event.pointerId)) return;
+      event.preventDefault();
+      cropPointers.set(event.pointerId, cropPointerPosition(event));
+      if (!cropGesture || cropGesture.count !== cropPointers.size) resetCropGesture();
+      if (!cropGesture) return;
+      const center = cropPointerCenter();
+      photoCrop.offsetX = cropGesture.offsetX + center.x - cropGesture.center.x;
+      photoCrop.offsetY = cropGesture.offsetY + center.y - cropGesture.center.y;
+      if (cropPointers.size >= 2 && cropGesture.distance > 0) {
+        photoCrop.zoom = Math.max(1, Math.min(4, cropGesture.zoom * cropPointerDistance() / cropGesture.distance));
+        $("cropZoom").value = String(photoCrop.zoom);
+        $("cropZoomValue").textContent = `${Math.round(photoCrop.zoom * 100)}%`;
+      }
+      drawPhotoCrop();
+    });
+    const releaseCropPointer = (event) => {
+      cropPointers.delete(event.pointerId);
+      $("cropStage").classList.toggle("dragging", cropPointers.size > 0);
+      resetCropGesture();
+    };
+    $("cropStage").addEventListener("pointerup", releaseCropPointer);
+    $("cropStage").addEventListener("pointercancel", releaseCropPointer);
+    $("cancelPhotoCrop").addEventListener("click", () => closePhotoCropper(true));
+    $("applyPhotoCrop").addEventListener("click", applyPhotoCrop);
+    $("cancelConfirm").addEventListener("click", () => closeConfirmation(false));
+    $("acceptConfirm").addEventListener("click", () => closeConfirmation(true));
+
+    load();
+    migrateGroups();
+    adoptExistingAvatars();
+    applyPreferredSetupAvatars();
+    renderNameFields();
+    showHome();
+
+    // Offline support for the hosted web app only; the native iPad app loads this file via file:// and skips it.
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
