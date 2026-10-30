@@ -1,9 +1,10 @@
-// 201c482e6a0a is replaced by build-web.sh with a hash of the app files, so each release gets a fresh cache.
-const CACHE = "scorekeeper-201c482e6a0a";
+// f25ecc896ea5 is replaced by build-web.sh with a hash of the app files, so each release gets a fresh cache.
+const CACHE = "scorekeeper-f25ecc896ea5";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
+  "./supabase.js",
   "./ScorekeeperLogo.png",
   "./apple-touch-icon.png",
   "./icon-192.png",

@@ -678,6 +678,13 @@
       vertical-align: middle;
     }
     .group-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 18px; }
+    .cloud-card { padding: 18px; }
+    .cloud-card h3 { margin: 0 0 6px; }
+    .cloud-card .actions { margin-top: 14px; }
+    .cloud-status { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--cp-surface-soft); color: var(--cp-text-muted); font-weight: 650; }
+    .cloud-status.error { color: var(--cp-danger); }
+    .shared-pill { background: var(--cp-surface-soft); color: var(--cp-text-muted); border: 1px solid var(--cp-border); }
+    .member-email { margin-top: 6px; }
     .group-header h2 { margin: 4px 0 0; }
     .leader-meta { color: var(--cp-text-muted); font-size: 12px; font-weight: 700; }
     .modal-backdrop {
@@ -909,6 +916,12 @@
             <div id="groupList" class="group-list"></div>
           </div>
 
+          <div id="sharedGroupsSection" class="home-section card hidden">
+            <h3>Shared with you</h3>
+            <p class="muted small">Groups where a host added your email. You can view their completed matches.</p>
+            <div id="sharedGroupList" class="group-list"></div>
+          </div>
+
           <div id="deletedGroupsSection" class="home-section card hidden">
             <h3>Deleted groups</h3>
             <p class="muted small">Restore a group with all its matches, or remove it permanently.</p>
@@ -917,6 +930,16 @@
         </div>
 
         <aside class="home-side">
+          <div id="cloudCard" class="cloud-card card">
+            <h3>Cloud sync</h3>
+            <p id="cloudText" class="muted small">Sign in with Google to back up your groups and let players see the matches they played.</p>
+            <div id="cloudStatus" class="cloud-status small hidden"></div>
+            <div class="actions">
+              <button id="signInButton" class="btn btn-primary" type="button">Sign in with Google</button>
+              <button id="syncButton" class="btn hidden" type="button">Sync now</button>
+              <button id="signOutButton" class="btn hidden" type="button">Sign out</button>
+            </div>
+          </div>
           <div class="stats-grid">
             <div class="stat-card card">
               <div id="groupsCount" class="stat-value">0</div>
@@ -952,7 +975,7 @@
             <button id="editGroup" class="btn" type="button">Edit group</button>
           </div>
 
-          <div class="hero-card card">
+          <div id="groupHero" class="hero-card card">
             <div class="hero-copy">
               <div class="step">Card night</div>
               <h2>Ready for the next match?</h2>
@@ -981,7 +1004,7 @@
             <div id="archiveList" class="archive-list"></div>
           </div>
 
-          <div class="home-section card">
+          <div id="groupDeletedSection" class="home-section card">
             <h3>Recently deleted</h3>
             <p class="muted small">Restore accidental deletions, or remove them permanently.</p>
             <div id="deletedList" class="archive-list"></div>
@@ -1207,6 +1230,7 @@
     </div>
   </main>
 
+  <script src="supabase.js"></script>
   <script>
     const STORAGE_KEY = "local-card-game-scorekeeper-v1";
     const ARCHIVE_KEY = "local-card-game-scorekeeper-archive-v1";
@@ -1256,6 +1280,7 @@
     let groups = [];
     let activeByGroup = {};
     let currentGroupId = null;
+    let viewingSharedGroupId = null;
     let groupEditor = null;
     let avatarPreferences = {};
     let editSnapshot = null;
@@ -1275,16 +1300,19 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
-    function saveArchive() {
+    function saveArchive(sync = true) {
       localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archive));
+      if (sync) scheduleSync();
     }
 
-    function saveTrash() {
+    function saveTrash(sync = true) {
       localStorage.setItem(TRASH_KEY, JSON.stringify(trash));
+      if (sync) scheduleSync();
     }
 
-    function saveGroups() {
+    function saveGroups(sync = true) {
       localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
+      if (sync) scheduleSync();
     }
 
     function saveActiveByGroup() {
@@ -1400,6 +1428,469 @@
         saveActiveByGroup();
         if (state.players.length) save();
       }
+    }
+
+    // ---------- Cloud sync (Supabase) ----------
+    const SUPABASE_URL = "https://qwnfmczoegtgmmbsbvwq.supabase.co";
+    // Publishable key: safe to ship in the app; row-level security in the database controls access.
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_y7mEK2otIf1eWxSbp-j5Fg_QYMPrcGq";
+    const NATIVE_AUTH_REDIRECT = "scorekeeper://auth-callback";
+    const SYNC_META_KEY = "local-card-game-scorekeeper-sync-meta-v1";
+    const SHARED_KEY = "local-card-game-scorekeeper-shared-v1";
+    let cloud = null;
+    let cloudSession = null;
+    let cloudSyncing = false;
+    let cloudSyncQueued = false;
+    let cloudSyncTimer = null;
+    let cloudStatus = { text: "", error: false };
+    let shared = { groups: [], matches: [] };
+
+    function isNativeApp() {
+      return location.protocol === "file:" && Boolean(window.webkit?.messageHandlers?.scorekeeperAuth);
+    }
+
+    function stableStringify(value) {
+      if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+      if (value && typeof value === "object") {
+        return `{${Object.keys(value).sort().filter((key) => value[key] !== undefined)
+          .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+      }
+      return JSON.stringify(value === undefined ? null : value);
+    }
+
+    function contentHash(value) {
+      const text = stableStringify(value);
+      let hash = 5381;
+      for (let index = 0; index < text.length; index += 1) hash = ((hash << 5) + hash + text.charCodeAt(index)) | 0;
+      return `${(hash >>> 0).toString(36)}:${text.length}`;
+    }
+
+    function loadSyncMeta() {
+      try {
+        const meta = JSON.parse(localStorage.getItem(SYNC_META_KEY) || "{}");
+        return {
+          userId: meta.userId || null,
+          hashes: meta.hashes || {},
+          seen: meta.seen || {},
+          lastSync: meta.lastSync || null,
+          sharedKey: meta.sharedKey || null
+        };
+      } catch {
+        return { userId: null, hashes: {}, seen: {}, lastSync: null };
+      }
+    }
+
+    function saveSyncMeta(meta) {
+      localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta));
+    }
+
+    function loadShared() {
+      try {
+        const value = JSON.parse(localStorage.getItem(SHARED_KEY) || "{}");
+        shared = { groups: Array.isArray(value.groups) ? value.groups : [], matches: Array.isArray(value.matches) ? value.matches : [] };
+      } catch {
+        shared = { groups: [], matches: [] };
+      }
+    }
+
+    function saveShared() {
+      localStorage.setItem(SHARED_KEY, JSON.stringify(shared));
+    }
+
+    function sharedGroupById(id) {
+      return shared.groups.find((group) => group.id === id) || null;
+    }
+
+    // Match data is uploaded without photo avatars or setup scratch fields; photos live once on the group.
+    function strippedRecord(record) {
+      const copy = JSON.parse(JSON.stringify(record));
+      const snapshot = copy.snapshot;
+      if (snapshot) {
+        delete snapshot.setupNames;
+        delete snapshot.setupAvatars;
+        snapshot.players?.forEach((player) => {
+          if (String(player.avatar || "").startsWith("data:")) player.avatar = "";
+        });
+      }
+      return copy;
+    }
+
+    function fillAvatars(record, members) {
+      record.snapshot?.players?.forEach((player, index) => {
+        if (player.avatar) return;
+        const member = members?.find((entry) => avatarPreferenceKey(entry.name) === avatarPreferenceKey(player.name));
+        player.avatar = preferredAvatar(player.name, member?.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]);
+      });
+      return record;
+    }
+
+    function groupRow(group, userId) {
+      return {
+        id: group.id,
+        owner_id: userId,
+        name: group.name,
+        members: group.members,
+        created_at: group.createdAt || new Date().toISOString(),
+        deleted_at: group.deletedAt || null
+      };
+    }
+
+    function matchRow(record, status, userId) {
+      const data = strippedRecord(record);
+      return {
+        id: record.id,
+        group_id: recordGroupId(record),
+        owner_id: userId,
+        status,
+        data,
+        completed_at: record.completedAt || record.snapshot?.completedAt || null
+      };
+    }
+
+    function rowHash(row) {
+      const { owner_id: ignoredOwner, ...content } = row;
+      return contentHash(content);
+    }
+
+    function setCloudStatus(text, error = false) {
+      cloudStatus = { text, error };
+      renderCloudCard();
+    }
+
+    function renderCloudCard() {
+      if (!$("cloudCard")) return;
+      const available = Boolean(cloud);
+      const signedIn = Boolean(cloudSession);
+      $("cloudCard").classList.toggle("hidden", !available);
+      $("signInButton").classList.toggle("hidden", signedIn);
+      $("syncButton").classList.toggle("hidden", !signedIn);
+      $("signOutButton").classList.toggle("hidden", !signedIn);
+      $("syncButton").disabled = cloudSyncing;
+      const meta = loadSyncMeta();
+      $("cloudText").textContent = signedIn
+        ? `Signed in as ${cloudSession.user.email}. Your groups sync automatically; players whose email you add can view their matches.`
+        : "Sign in with Google to back up your groups and let players see the matches they played.";
+      const status = cloudStatus.text || (signedIn && meta.lastSync ? `Last synced ${formatDate(meta.lastSync)}` : "");
+      $("cloudStatus").textContent = status;
+      $("cloudStatus").classList.toggle("hidden", !status);
+      $("cloudStatus").classList.toggle("error", cloudStatus.error);
+    }
+
+    function scheduleSync(delay = 2000) {
+      if (!cloud || !cloudSession) return;
+      window.clearTimeout(cloudSyncTimer);
+      cloudSyncTimer = window.setTimeout(() => syncNow(), delay);
+    }
+
+    function refreshVisibleList() {
+      if (!$("homeView").classList.contains("hidden")) showHome();
+      else if (!$("groupView").classList.contains("hidden") && viewingSharedGroupId) showSharedGroup(viewingSharedGroupId);
+      else if (!$("groupView").classList.contains("hidden") && currentGroupId) showGroup(currentGroupId);
+    }
+
+    async function fetchRowsById(table, ids) {
+      const rows = [];
+      for (let start = 0; start < ids.length; start += 50) {
+        const { data, error } = await cloud.from(table).select("*").in("id", ids.slice(start, start + 50));
+        if (error) throw error;
+        rows.push(...data);
+      }
+      return rows;
+    }
+
+    async function upsertRows(table, rows, chunkSize) {
+      const saved = [];
+      for (let start = 0; start < rows.length; start += chunkSize) {
+        const { data, error } = await cloud.from(table).upsert(rows.slice(start, start + chunkSize)).select("id, updated_at");
+        if (error) throw error;
+        saved.push(...data);
+      }
+      return saved;
+    }
+
+    function applyRemoteGroup(row) {
+      const group = {
+        id: row.id,
+        name: row.name,
+        members: Array.isArray(row.members) ? row.members : [],
+        createdAt: row.created_at,
+        ownerId: row.owner_id
+      };
+      if (row.deleted_at) group.deletedAt = row.deleted_at;
+      const index = groups.findIndex((entry) => entry.id === row.id);
+      if (index >= 0) groups[index] = group;
+      else groups.push(group);
+      return group;
+    }
+
+    function applyRemoteMatch(row) {
+      const record = fillAvatars(JSON.parse(JSON.stringify(row.data)), groupById(row.group_id)?.members);
+      record.id = row.id;
+      record.groupId = row.group_id;
+      archive = archive.filter((entry) => entry.id !== row.id);
+      trash = trash.filter((entry) => entry.id !== row.id);
+      if (row.status === "complete") {
+        delete record.kind;
+        delete record.deletedAt;
+        archive.push(record);
+        archive.sort((a, b) => String(b.completedAt || "").localeCompare(String(a.completedAt || "")));
+      } else {
+        record.kind = "completed";
+        if (!record.deletedAt) record.deletedAt = row.updated_at;
+        trash.unshift(record);
+      }
+      return record;
+    }
+
+    function localCloudRows(userId) {
+      const mine = groups.filter((group) => group.ownerId === userId);
+      const mineIds = new Set(mine.map((group) => group.id));
+      const groupRows = new Map(mine.map((group) => [group.id, groupRow(group, userId)]));
+      const matchRows = new Map();
+      archive.forEach((record) => {
+        if (mineIds.has(recordGroupId(record))) matchRows.set(record.id, matchRow(record, "complete", userId));
+      });
+      trash.forEach((record) => {
+        if (record.kind !== "unfinished" && mineIds.has(recordGroupId(record))) {
+          matchRows.set(record.id, matchRow(record, "deleted", userId));
+        }
+      });
+      return { groupRows, matchRows };
+    }
+
+    async function syncNow() {
+      if (!cloud || !cloudSession) return;
+      if (cloudSyncing) {
+        cloudSyncQueued = true;
+        return;
+      }
+      if (!navigator.onLine) {
+        setCloudStatus("Offline. Changes will sync when you’re back online.");
+        return;
+      }
+      cloudSyncing = true;
+      setCloudStatus("Syncing…");
+      try {
+        const userId = cloudSession.user.id;
+        let meta = loadSyncMeta();
+        if (meta.userId !== userId) meta = { userId, hashes: {}, seen: {}, lastSync: null };
+
+        // Groups created on this device before signing in belong to the signed-in host.
+        let claimed = false;
+        groups.forEach((group) => {
+          if (!group.ownerId) {
+            group.ownerId = userId;
+            claimed = true;
+          }
+        });
+        if (claimed) saveGroups(false);
+
+        const [groupIndex, matchIndex] = await Promise.all([
+          cloud.from("groups").select("id, owner_id, updated_at"),
+          cloud.from("matches").select("id, owner_id, updated_at")
+        ]);
+        if (groupIndex.error) throw groupIndex.error;
+        if (matchIndex.error) throw matchIndex.error;
+        const remote = {
+          g: new Map(groupIndex.data.map((row) => [row.id, row])),
+          m: new Map(matchIndex.data.map((row) => [row.id, row]))
+        };
+        let { groupRows, matchRows } = localCloudRows(userId);
+        const local = { g: groupRows, m: matchRows };
+        let localChanged = false;
+
+        // Removals: deleted here -> delete in the cloud; deleted on another device -> remove here.
+        for (const key of Object.keys(meta.hashes)) {
+          const [kind, ...rest] = key.split(":");
+          const id = rest.join(":");
+          const table = kind === "g" ? "groups" : "matches";
+          const remoteRow = remote[kind]?.get(id);
+          const localRow = local[kind]?.get(id);
+          if (!localRow && remoteRow?.owner_id === userId) {
+            const { error } = await cloud.from(table).delete().eq("id", id);
+            if (error) throw error;
+            remote[kind].delete(id);
+            delete meta.hashes[key];
+            delete meta.seen[key];
+          } else if (localRow && !remoteRow && rowHash(localRow) === meta.hashes[key]) {
+            if (kind === "g") {
+              groups = groups.filter((group) => group.id !== id);
+              archive = archive.filter((record) => recordGroupId(record) !== id);
+              trash = trash.filter((record) => recordGroupId(record) !== id);
+              delete activeByGroup[id];
+            } else {
+              archive = archive.filter((record) => record.id !== id);
+              trash = trash.filter((record) => record.id !== id);
+            }
+            delete meta.hashes[key];
+            delete meta.seen[key];
+            localChanged = true;
+          } else if (!localRow && !remoteRow) {
+            delete meta.hashes[key];
+            delete meta.seen[key];
+          }
+        }
+        if (localChanged) ({ groupRows, matchRows } = localCloudRows(userId));
+
+        // Push local changes (groups first so matches can reference them).
+        const pushed = new Set();
+        for (const [kind, table, rows, chunk] of [["g", "groups", groupRows, 5], ["m", "matches", matchRows, 25]]) {
+          const dirty = [...rows.values()].filter((row) => rowHash(row) !== meta.hashes[`${kind}:${row.id}`]);
+          if (!dirty.length) continue;
+          const saved = await upsertRows(table, dirty, chunk);
+          const savedAt = new Map(saved.map((row) => [row.id, row.updated_at]));
+          dirty.forEach((row) => {
+            const key = `${kind}:${row.id}`;
+            meta.hashes[key] = rowHash(row);
+            meta.seen[key] = savedAt.get(row.id) || null;
+            pushed.add(key);
+          });
+        }
+
+        // Pull this host's rows that are new or changed on another device.
+        for (const [kind, table] of [["g", "groups"], ["m", "matches"]]) {
+          const ids = [...remote[kind].values()]
+            .filter((row) => row.owner_id === userId && !pushed.has(`${kind}:${row.id}`) && meta.seen[`${kind}:${row.id}`] !== row.updated_at)
+            .map((row) => row.id);
+          if (!ids.length) continue;
+          const rows = await fetchRowsById(table, ids);
+          rows.forEach((row) => {
+            const key = `${kind}:${row.id}`;
+            if (kind === "g") {
+              const group = applyRemoteGroup(row);
+              meta.hashes[key] = rowHash(groupRow(group, userId));
+            } else {
+              const record = applyRemoteMatch(row);
+              meta.hashes[key] = rowHash(matchRow(record, row.status, userId));
+            }
+            meta.seen[key] = row.updated_at;
+          });
+          localChanged = true;
+        }
+
+        // Groups other hosts shared with this user (read-only).
+        const sharedGroupIds = [...remote.g.values()].filter((row) => row.owner_id !== userId).map((row) => row.id);
+        const sharedMatchIds = [...remote.m.values()].filter((row) => row.owner_id !== userId).map((row) => row.id);
+        const sharedKey = contentHash([
+          [...remote.g.values()].filter((row) => row.owner_id !== userId).map((row) => [row.id, row.updated_at]),
+          [...remote.m.values()].filter((row) => row.owner_id !== userId).map((row) => [row.id, row.updated_at])
+        ]);
+        if (sharedKey !== meta.sharedKey) {
+          const sharedGroupRows = sharedGroupIds.length ? await fetchRowsById("groups", sharedGroupIds) : [];
+          const sharedMatchRows = sharedMatchIds.length ? await fetchRowsById("matches", sharedMatchIds) : [];
+          shared.groups = sharedGroupRows.map((row) => ({ id: row.id, name: row.name, members: row.members || [], createdAt: row.created_at }));
+          shared.matches = sharedMatchRows.map((row) => {
+            const record = fillAvatars(JSON.parse(JSON.stringify(row.data)), sharedGroupById(row.group_id)?.members);
+            record.id = row.id;
+            record.groupId = row.group_id;
+            return record;
+          }).sort((a, b) => String(b.completedAt || "").localeCompare(String(a.completedAt || "")));
+          saveShared();
+          meta.sharedKey = sharedKey;
+          localChanged = true;
+        }
+
+        meta.lastSync = new Date().toISOString();
+        saveSyncMeta(meta);
+        if (localChanged) {
+          saveGroups(false);
+          saveArchive(false);
+          saveTrash(false);
+          saveActiveByGroup();
+          refreshVisibleList();
+        }
+        setCloudStatus("");
+      } catch (error) {
+        setCloudStatus(`Sync failed: ${error.message || error}. Will retry.`, true);
+        scheduleSync(60000);
+      } finally {
+        cloudSyncing = false;
+        renderCloudCard();
+        if (cloudSyncQueued) {
+          cloudSyncQueued = false;
+          scheduleSync(500);
+        }
+      }
+    }
+
+    async function signIn() {
+      if (!cloud) return;
+      if (!navigator.onLine) {
+        setCloudStatus("You’re offline. Connect to the internet to sign in.", true);
+        return;
+      }
+      const native = isNativeApp();
+      const { data, error } = await cloud.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: native ? NATIVE_AUTH_REDIRECT : `${location.origin}${location.pathname}`,
+          skipBrowserRedirect: native,
+          queryParams: { prompt: "select_account" }
+        }
+      });
+      if (error) {
+        setCloudStatus(`Sign-in failed: ${error.message}`, true);
+        return;
+      }
+      if (native) window.webkit.messageHandlers.scorekeeperAuth.postMessage({ url: data.url });
+    }
+
+    // Called by the iPad app after the system sign-in sheet returns to scorekeeper://auth-callback.
+    window.scorekeeperNativeAuthCallback = async (callbackUrl, nativeError) => {
+      if (nativeError) {
+        setCloudStatus(nativeError === "cancelled" ? "" : `Sign-in failed: ${nativeError}`, nativeError !== "cancelled");
+        return;
+      }
+      const url = new URL(callbackUrl);
+      const code = url.searchParams.get("code");
+      const failure = url.searchParams.get("error_description") || url.searchParams.get("error");
+      if (failure || !code) {
+        setCloudStatus(`Sign-in failed: ${failure || "no code returned"}`, true);
+        return;
+      }
+      const { error } = await cloud.auth.exchangeCodeForSession(code);
+      if (error) setCloudStatus(`Sign-in failed: ${error.message}`, true);
+    };
+
+    async function signOut() {
+      if (!cloud) return;
+      requestConfirmation("Sign out? Your games stay on this device and will sync again when you sign back in.", async () => {
+        window.clearTimeout(cloudSyncTimer);
+        await cloud.auth.signOut();
+      });
+    }
+
+    function initCloud() {
+      loadShared();
+      if (!window.supabase?.createClient || SUPABASE_PUBLISHABLE_KEY.startsWith("__")) {
+        renderCloudCard();
+        return;
+      }
+      cloud = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { flowType: "pkce", persistSession: true, autoRefreshToken: true, detectSessionInUrl: !isNativeApp(), storageKey: "scorekeeper-auth" }
+      });
+      cloud.auth.onAuthStateChange((event, session) => {
+        const previousUser = cloudSession?.user?.id || null;
+        cloudSession = session;
+        if (event === "SIGNED_IN" && /[?&](code|error)=/.test(location.search)) {
+          history.replaceState(null, "", location.pathname);
+        }
+        if (!session) {
+          cloudStatus = { text: "", error: false };
+          if (previousUser) {
+            shared = { groups: [], matches: [] };
+            saveShared();
+            refreshVisibleList();
+          }
+        }
+        renderCloudCard();
+        if (session && session.user.id !== previousUser) scheduleSync(300);
+      });
+      window.addEventListener("online", () => scheduleSync(500));
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") scheduleSync(500);
+      });
+      renderCloudCard();
     }
 
     function avatarPreferenceKey(name) {
@@ -1649,6 +2140,8 @@
       }
       state.setupNames = state.setupNames.slice(0, count);
       state.setupAvatars = state.setupAvatars.slice(0, count);
+      const emails = groupEditor?.emails || [];
+      while (emails.length < count) emails.push("");
       $("nameFields").innerHTML = state.setupNames.map((name, index) => `
         <div class="setup-player card reorder-item" data-setup-player="${index}" style="--delay: ${index * 55}ms">
           <button class="drag-handle" type="button" data-setup-drag="${index}"
@@ -1663,9 +2156,17 @@
             <input id="playerName${index}" data-name-index="${index}" type="text"
               aria-label="Player ${index + 1} name"
               autocomplete="off" maxlength="28" placeholder="Enter name" value="${escapeHtml(name)}" />
+            <input id="playerEmail${index}" class="member-email" data-email-index="${index}" type="email"
+              aria-label="Player ${index + 1} Google email" autocomplete="off" autocapitalize="none" spellcheck="false"
+              maxlength="120" placeholder="Google email (optional, to share history)" value="${escapeHtml(emails[index] || "")}" />
           </div>
         </div>
       `).join("");
+      document.querySelectorAll("[data-email-index]").forEach((input) => {
+        input.addEventListener("input", (event) => {
+          if (groupEditor) groupEditor.emails[Number(event.target.dataset.emailIndex)] = event.target.value;
+        });
+      });
       document.querySelectorAll("[data-name-index]").forEach((input) => {
         input.addEventListener("input", (event) => {
           state.setupNames[Number(event.target.dataset.nameIndex)] = event.target.value;
@@ -1693,6 +2194,7 @@
           if (groupEditor) {
             while (groupEditor.originalNames.length < state.setupNames.length) groupEditor.originalNames.push("");
             moveArrayItem(groupEditor.originalNames, fromIndex, toIndex);
+            moveArrayItem(groupEditor.emails, fromIndex, toIndex);
           }
           renderNameFields();
         }
@@ -2084,11 +2586,13 @@
       return `<div class="history"><table><thead><tr><th>Game</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
     }
 
-    function renderArchive() {
+    function renderArchive(view = null) {
       const group = groupById(currentGroupId);
-      const records = groupArchive(currentGroupId);
-      const deletedRecords = groupTrash(currentGroupId);
-      renderHomeCardArt("homeCardArt", group ? group.members : []);
+      const members = view ? view.members : group ? group.members : [];
+      const records = view ? view.records : groupArchive(currentGroupId);
+      const deletedRecords = view ? [] : groupTrash(currentGroupId);
+      const readOnly = Boolean(view?.readOnly);
+      renderHomeCardArt("homeCardArt", members);
       $("matchesPlayed").textContent = records.length;
       $("gamesPlayed").textContent = records.reduce((sum, record) => sum + record.snapshot.history.length, 0);
       const uniquePlayers = new Set(
@@ -2122,10 +2626,10 @@
                 `).join("")}
               </div>
               ${archiveGameTable(snapshot)}
-              <div class="actions">
+              ${readOnly ? "" : `<div class="actions">
                 <button class="btn" type="button" data-edit-archive="${record.id}">Edit this match</button>
                 <button class="btn btn-danger" type="button" data-delete-archive="${record.id}">Delete history</button>
-              </div>
+              </div>`}
             </div>
           </details>
         `;
@@ -2224,7 +2728,7 @@
 
     function renderGlobalLeaderboard() {
       const players = new Map();
-      archive.filter(isLiveRecord).forEach((record) => {
+      [...archive.filter(isLiveRecord), ...shared.matches].forEach((record) => {
         const winnerKeys = new Set(matchWinners(record.snapshot).map((winner) => avatarPreferenceKey(winner.name)));
         record.snapshot.players.forEach((player) => {
           const key = avatarPreferenceKey(player.name);
@@ -2253,6 +2757,7 @@
     function showHome() {
       discardPendingEdit();
       currentGroupId = null;
+      viewingSharedGroupId = null;
       hideAllViews();
       $("homeView").classList.remove("hidden");
       $("homeButton").classList.add("hidden");
@@ -2261,8 +2766,8 @@
       $("resetButton").classList.add("hidden");
 
       const sortedGroups = liveGroups().sort((a, b) => groupLastActivity(b).localeCompare(groupLastActivity(a)));
-      $("groupsCount").textContent = sortedGroups.length;
-      $("allMatchesPlayed").textContent = archive.filter(isLiveRecord).length;
+      $("groupsCount").textContent = sortedGroups.length + shared.groups.length;
+      $("allMatchesPlayed").textContent = archive.filter(isLiveRecord).length + shared.matches.length;
       renderHomeCardArt("homeHeroArt", sortedGroups[0]?.members ||
         AVATAR_OPTIONS.slice(0, 4).map((avatar, index) => ({ name: `Player ${index + 1}`, avatar })));
       $("groupList").innerHTML = sortedGroups.length ? sortedGroups.map((group, index) => {
@@ -2287,7 +2792,64 @@
         button.addEventListener("click", () => showGroup(button.dataset.openGroup));
       });
       renderDeletedGroups();
+      renderSharedGroups();
       renderGlobalLeaderboard();
+      renderCloudCard();
+    }
+
+    function renderSharedGroups() {
+      $("sharedGroupsSection").classList.toggle("hidden", shared.groups.length === 0);
+      $("sharedGroupList").innerHTML = shared.groups.map((group, index) => {
+        const records = shared.matches.filter((record) => record.groupId === group.id);
+        const lastPlayed = records.map((record) => record.snapshot?.completedAt || record.completedAt).filter(Boolean).sort().pop();
+        return `
+          <button class="group-card card" type="button" data-open-shared="${group.id}" style="--delay: ${index * 55}ms"
+            aria-label="Open shared group ${escapeHtml(group.name)}">
+            <span>
+              <span class="group-card-name">${escapeHtml(group.name)}</span><span class="live-pill shared-pill">Shared</span>
+              <span class="archive-date">${records.length} match${records.length === 1 ? "" : "es"}${lastPlayed ? ` · Last played ${formatMatchDate(lastPlayed)}` : ""}</span>
+              <span class="active-players">
+                ${group.members.map((member) => `<span class="avatar-chip">${avatarMarkup(member.avatar || AVATAR_OPTIONS[0])} ${escapeHtml(member.name)}</span>`).join("")}
+              </span>
+            </span>
+            <span class="group-card-open" aria-hidden="true">›</span>
+          </button>
+        `;
+      }).join("");
+      document.querySelectorAll("[data-open-shared]").forEach((button) => {
+        button.addEventListener("click", () => showSharedGroup(button.dataset.openShared));
+      });
+    }
+
+    function showSharedGroup(groupId) {
+      const group = sharedGroupById(groupId);
+      if (!group) {
+        showHome();
+        return;
+      }
+      discardPendingEdit();
+      currentGroupId = null;
+      viewingSharedGroupId = group.id;
+      hideAllViews();
+      $("groupView").classList.remove("hidden");
+      $("homeButton").textContent = "All groups";
+      $("homeButton").classList.remove("hidden");
+      $("editButton").classList.add("hidden");
+      $("undoButton").classList.add("hidden");
+      $("resetButton").classList.add("hidden");
+      $("editGroup").classList.add("hidden");
+      $("groupHero").classList.add("hidden");
+      $("activeMatchCard").classList.add("hidden");
+      $("groupDeletedSection").classList.add("hidden");
+      $("groupTitle").textContent = group.name;
+      $("groupMembers").innerHTML = group.members.map((member) => `
+        <span class="avatar-chip">${avatarMarkup(member.avatar || AVATAR_OPTIONS[0])} ${escapeHtml(member.name)}</span>
+      `).join("");
+      renderArchive({
+        members: group.members,
+        records: shared.matches.filter((record) => record.groupId === group.id),
+        readOnly: true
+      });
     }
 
     function renderDeletedGroups() {
@@ -2359,9 +2921,13 @@
       }
       discardPendingEdit();
       currentGroupId = group.id;
+      viewingSharedGroupId = null;
       enterGroupMatch(group.id);
       hideAllViews();
       $("groupView").classList.remove("hidden");
+      $("editGroup").classList.remove("hidden");
+      $("groupHero").classList.remove("hidden");
+      $("groupDeletedSection").classList.remove("hidden");
       $("homeButton").textContent = "All groups";
       $("homeButton").classList.remove("hidden");
       $("editButton").classList.add("hidden");
@@ -2390,7 +2956,11 @@
       const members = group
         ? group.members
         : Array.from({ length: 4 }, (_, index) => ({ name: "", avatar: AVATAR_OPTIONS[index] }));
-      groupEditor = { groupId: group ? group.id : null, originalNames: members.map((member) => member.name) };
+      groupEditor = {
+        groupId: group ? group.id : null,
+        originalNames: members.map((member) => member.name),
+        emails: members.map((member) => member.email || "")
+      };
       state.setupNames = members.map((member) => member.name);
       state.setupAvatars = members.map((member, index) =>
         preferredAvatar(member.name, member.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length])
@@ -2421,12 +2991,22 @@
       renderNameFields();
       const name = $("groupName").value.trim();
       const count = clampInt($("playerCount").value, 2, 12, 4);
-      const members = state.setupNames.slice(0, count).map((memberName, index) => ({
-        name: memberName.trim() || `Player ${index + 1}`,
-        avatar: state.setupAvatars[index] || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]
-      }));
+      const members = state.setupNames.slice(0, count).map((memberName, index) => {
+        const member = {
+          name: memberName.trim() || `Player ${index + 1}`,
+          avatar: state.setupAvatars[index] || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]
+        };
+        const email = String(groupEditor?.emails?.[index] || "").trim().toLocaleLowerCase();
+        if (email) member.email = email;
+        return member;
+      });
       if (!name) {
         showGroupError("Give this group a name.");
+        return;
+      }
+      const badEmail = members.find((member) => member.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(member.email));
+      if (badEmail) {
+        showGroupError(`“${badEmail.email}” doesn’t look like an email address.`);
         return;
       }
       const editingId = groupEditor?.groupId || null;
@@ -3337,6 +3917,9 @@
     });
     $("deleteGroup").addEventListener("click", deleteGroup);
     $("newGroup").addEventListener("click", () => openGroupEditor());
+    $("signInButton").addEventListener("click", signIn);
+    $("syncButton").addEventListener("click", () => syncNow());
+    $("signOutButton").addEventListener("click", signOut);
     $("editGroup").addEventListener("click", () => openGroupEditor(currentGroupId));
     $("backSetup").addEventListener("click", () => showGroup(currentGroupId));
     $("startMatch").addEventListener("click", startMatch);
@@ -3417,6 +4000,7 @@
 
     load();
     migrateGroups();
+    initCloud();
     adoptExistingAvatars();
     applyPreferredSetupAvatars();
     renderNameFields();
