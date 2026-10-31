@@ -155,7 +155,7 @@
     }
     .field { display: grid; gap: 8px; margin-top: 20px; }
     label { color: var(--cp-text-muted); font-size: 14px; font-weight: 700; }
-    input[type="text"], input[type="number"] {
+    input[type="text"], input[type="number"], input[type="email"] {
       width: 100%;
       min-height: 52px;
       padding: 12px 14px;
@@ -177,7 +177,7 @@
       animation: card-arrive 420ms cubic-bezier(.2,.8,.2,1) both;
       animation-delay: var(--delay);
     }
-    .setup-player .field { margin-top: 0; }
+    .setup-player .field { min-width: 0; margin-top: 0; }
     .drag-handle {
       display: grid;
       min-width: 54px;
@@ -911,6 +911,15 @@
       .deleted-item { grid-template-columns: 1fr; }
       .deleted-actions { justify-content: start; }
       .editor-player .btn { grid-column: 1 / -1; }
+      .topbar { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+      .brand { min-width: 0; }
+      .brand .small { display: none; }
+      .top-actions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+      .top-actions .icon-btn { min-width: 0; max-width: 46vw; padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .setup-player { grid-template-columns: auto minmax(0, 1fr); gap: 10px 12px; padding: 12px; }
+      .setup-player .field { grid-column: 1 / -1; }
+      .stepper { grid-template-columns: 48px minmax(0, 1fr) 48px; }
+      .stepper input[type="number"] { width: 100%; }
     }
   </style>
 </head>
@@ -989,7 +998,7 @@
 
           <div id="deletedGroupsSection" class="home-section card hidden">
             <h3>Deleted groups</h3>
-            <p class="muted small">Restore a group with all its matches, or remove it permanently.</p>
+            <p class="muted small">Restore a group with all its matches, or remove it permanently. Deleted groups are removed automatically after 30 days.</p>
             <div id="deletedGroupList" class="archive-list"></div>
           </div>
         </div>
@@ -1061,7 +1070,7 @@
 
           <div id="groupDeletedSection" class="home-section card">
             <h3>Recently deleted</h3>
-            <p class="muted small">Restore accidental deletions, or remove them permanently.</p>
+            <p class="muted small">Restore accidental deletions, or remove them permanently. Deleted matches are removed automatically after 30 days.</p>
             <div id="deletedList" class="archive-list"></div>
           </div>
         </div>
@@ -1977,6 +1986,25 @@
         }
       });
       return changed;
+    }
+
+    const DELETED_RETENTION_DAYS = 30;
+
+    // Matches the cloud's daily clean-up: anything deleted more than 30 days ago is removed for good.
+    function purgeExpiredDeleted() {
+      const cutoff = new Date(Date.now() - DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const expired = (when) => Boolean(when) && String(when) < cutoff;
+      const expiredGroups = new Set(groups.filter((group) => expired(group.deletedAt)).map((group) => group.id));
+      const trashBefore = trash.length;
+      trash = trash.filter((record) => !expired(record.deletedAt) && !expiredGroups.has(recordGroupId(record)));
+      if (trash.length !== trashBefore) saveTrash();
+      if (!expiredGroups.size) return;
+      groups = groups.filter((group) => !expiredGroups.has(group.id));
+      archive = archive.filter((record) => !expiredGroups.has(recordGroupId(record)));
+      expiredGroups.forEach((id) => delete activeByGroup[id]);
+      saveGroups();
+      saveArchive();
+      saveActiveByGroup();
     }
 
     function compactStoredMatches() {
@@ -4097,6 +4125,7 @@
     initCloud();
     adoptExistingAvatars();
     compactStoredMatches();
+    purgeExpiredDeleted();
 
     const BACKFILL_IMPORTED_KEY = "local-card-game-scorekeeper-backfill-imported-v1";
 
