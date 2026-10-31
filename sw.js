@@ -1,5 +1,5 @@
-// f25ecc896ea5 is replaced by build-web.sh with a hash of the app files, so each release gets a fresh cache.
-const CACHE = "scorekeeper-f25ecc896ea5";
+// 40dba7e1886f is replaced by build-web.sh with a hash of the app files, so each release gets a fresh cache.
+const CACHE = "scorekeeper-40dba7e1886f";
 const ASSETS = [
   "./",
   "./index.html",

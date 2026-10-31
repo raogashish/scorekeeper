@@ -666,6 +666,18 @@
     .group-card-name { font-size: 20px; font-weight: 850; }
     .group-card .active-players { margin-top: 10px; }
     .group-card-open { color: var(--cp-accent); font-size: 28px; font-weight: 900; }
+    .backfill-tag {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 8px;
+      border: 1px solid var(--cp-border);
+      border-radius: 999px;
+      background: var(--cp-surface-soft);
+      color: var(--cp-text-muted);
+      font-size: 11px;
+      font-weight: 750;
+      vertical-align: middle;
+    }
     .live-pill {
       display: inline-block;
       margin-left: 8px;
@@ -1515,15 +1527,6 @@
       return copy;
     }
 
-    function fillAvatars(record, members) {
-      record.snapshot?.players?.forEach((player, index) => {
-        if (player.avatar) return;
-        const member = members?.find((entry) => avatarPreferenceKey(entry.name) === avatarPreferenceKey(player.name));
-        player.avatar = preferredAvatar(player.name, member?.avatar || AVATAR_OPTIONS[index % AVATAR_OPTIONS.length]);
-      });
-      return record;
-    }
-
     function groupRow(group, userId) {
       return {
         id: group.id,
@@ -1624,7 +1627,7 @@
     }
 
     function applyRemoteMatch(row) {
-      const record = fillAvatars(JSON.parse(JSON.stringify(row.data)), groupById(row.group_id)?.members);
+      const record = JSON.parse(JSON.stringify(row.data));
       record.id = row.id;
       record.groupId = row.group_id;
       archive = archive.filter((entry) => entry.id !== row.id);
@@ -1780,7 +1783,7 @@
           const sharedMatchRows = sharedMatchIds.length ? await fetchRowsById("matches", sharedMatchIds) : [];
           shared.groups = sharedGroupRows.map((row) => ({ id: row.id, name: row.name, members: row.members || [], createdAt: row.created_at }));
           shared.matches = sharedMatchRows.map((row) => {
-            const record = fillAvatars(JSON.parse(JSON.stringify(row.data)), sharedGroupById(row.group_id)?.members);
+            const record = JSON.parse(JSON.stringify(row.data));
             record.id = row.id;
             record.groupId = row.group_id;
             return record;
@@ -1899,6 +1902,45 @@
 
     function preferredAvatar(name, fallback) {
       return avatarPreferences[avatarPreferenceKey(name)] || fallback;
+    }
+
+    function recordMembers(record) {
+      const groupId = recordGroupId(record);
+      return groupById(groupId)?.members || sharedGroupById(groupId)?.members || [];
+    }
+
+    // Saved matches reference each player's photo by name instead of storing a copy, keeping storage small.
+    function matchPlayerAvatar(player, members = []) {
+      if (player.avatar) return player.avatar;
+      const key = avatarPreferenceKey(player.name);
+      const member = members.find((entry) => avatarPreferenceKey(entry.name) === key);
+      return avatarPreferences[key] || member?.avatar || "🙂";
+    }
+
+    function compactRecord(record) {
+      const snapshot = record.snapshot;
+      if (!snapshot) return false;
+      let changed = false;
+      if ("setupNames" in snapshot || "setupAvatars" in snapshot) {
+        delete snapshot.setupNames;
+        delete snapshot.setupAvatars;
+        changed = true;
+      }
+      snapshot.players?.forEach((player) => {
+        const avatar = String(player.avatar || "");
+        if (avatar.startsWith("data:") && avatarPreferences[avatarPreferenceKey(player.name)] === avatar) {
+          player.avatar = "";
+          changed = true;
+        }
+      });
+      return changed;
+    }
+
+    function compactStoredMatches() {
+      const archiveChanged = archive.map(compactRecord).some(Boolean);
+      const trashChanged = trash.filter((record) => record.kind !== "unfinished").map(compactRecord).some(Boolean);
+      if (archiveChanged) saveArchive(false);
+      if (trashChanged) saveTrash(false);
     }
 
     function rememberAvatar(name, avatar) {
@@ -2428,6 +2470,8 @@
         completedAt: state.completedAt,
         snapshot: JSON.parse(JSON.stringify(state))
       };
+      if (state.backfilled) record.backfilled = true;
+      compactRecord(record);
       const existingIndex = archive.findIndex((entry) => entry.id === record.id);
       if (existingIndex >= 0) archive[existingIndex] = record;
       else archive.unshift(record);
@@ -2525,14 +2569,14 @@
       return snapshot.players.filter((player) => player.score === topScore);
     }
 
-    function renderHomeLeaderboard(records) {
+    function renderHomeLeaderboard(records, members = []) {
       const wins = new Map();
       records.forEach((record) => {
         matchWinners(record.snapshot).forEach((winner) => {
           const key = winner.name.trim().toLocaleLowerCase();
-          const existing = wins.get(key) || { name: winner.name, avatar: winner.avatar, wins: 0 };
+          const existing = wins.get(key) || { name: winner.name, avatar: "", wins: 0 };
           existing.name = winner.name;
-          existing.avatar = winner.avatar;
+          existing.avatar = matchPlayerAvatar(winner, members);
           existing.wins += 1;
           wins.set(key, existing);
         });
@@ -2599,7 +2643,7 @@
         records.flatMap((record) => record.snapshot.players.map((player) => player.name.trim().toLocaleLowerCase()))
       );
       $("playersTracked").textContent = uniquePlayers.size;
-      renderHomeLeaderboard(records);
+      renderHomeLeaderboard(records, members);
       $("archiveList").innerHTML = records.length ? records.map((record) => {
         const snapshot = record.snapshot;
         const completedAt = snapshot.completedAt || record.completedAt;
@@ -2608,21 +2652,27 @@
         const winnerText = winners.length === 1
           ? `${escapeHtml(winners[0].name)} won`
           : `${winners.map((winner) => escapeHtml(winner.name)).join(" & ")} tied`;
+        const backfilled = Boolean(record.backfilled || snapshot.backfilled);
+        const dateText = formatMatchDate(snapshot.startedAt || completedAt);
+        const gamesText = `${snapshot.history.length} game${snapshot.history.length === 1 ? "" : "s"}`;
+        const summaryLabel = backfilled
+          ? `Open match history: ${winnerText}. ${dateText}. Backfilled from a paper score sheet.`
+          : `Open match history: ${winnerText}. ${dateText}. ${duration}. Started ${formatMatchTime(snapshot.startedAt)}. Ended ${formatMatchTime(completedAt)}.`;
         return `
           <details class="archive-item card">
-            <summary aria-label="Open match history: ${winnerText}. ${formatMatchDate(snapshot.startedAt || completedAt)}. ${duration}. Started ${formatMatchTime(snapshot.startedAt)}. Ended ${formatMatchTime(completedAt)}.">
+            <summary aria-label="${summaryLabel}">
               <span></span>
               <span>
-                <span class="archive-winner">${winnerText}</span>
-                <span class="archive-date">${formatMatchDate(snapshot.startedAt || completedAt)} · ${snapshot.history.length} game${snapshot.history.length === 1 ? "" : "s"} · ${duration}</span>
-                <span class="archive-date">Started ${formatMatchTime(snapshot.startedAt)} · Ended ${formatMatchTime(completedAt)}</span>
+                <span class="archive-winner">${winnerText}${backfilled ? ` <span class="backfill-tag">Backfilled</span>` : ""}</span>
+                <span class="archive-date">${dateText} · ${gamesText}${backfilled ? "" : ` · ${duration}`}</span>
+                ${backfilled ? "" : `<span class="archive-date">Started ${formatMatchTime(snapshot.startedAt)} · Ended ${formatMatchTime(completedAt)}</span>`}
               </span>
               <strong>${formatScore(winners[0]?.score || 0)}</strong>
             </summary>
             <div class="archive-body">
               <div class="archive-scores">
                 ${[...snapshot.players].sort((a, b) => b.score - a.score).map((player) => `
-                  <span class="archive-score">${avatarMarkup(player.avatar)} ${escapeHtml(player.name)}: <strong>${formatScore(player.score)}</strong></span>
+                  <span class="archive-score">${avatarMarkup(matchPlayerAvatar(player, members))} ${escapeHtml(player.name)}: <strong>${formatScore(player.score)}</strong></span>
                 `).join("")}
               </div>
               ${archiveGameTable(snapshot)}
@@ -2648,6 +2698,7 @@
           const record = archive.find((entry) => entry.id === button.dataset.editArchive);
           const openRecord = () => {
             Object.assign(state, JSON.parse(JSON.stringify(record.snapshot)));
+            state.players.forEach((player) => { player.avatar = matchPlayerAvatar(player, members); });
             state.archiveId = record.id;
             if (!state.completedAt) state.completedAt = record.completedAt;
             save();
@@ -2732,7 +2783,7 @@
         const winnerKeys = new Set(matchWinners(record.snapshot).map((winner) => avatarPreferenceKey(winner.name)));
         record.snapshot.players.forEach((player) => {
           const key = avatarPreferenceKey(player.name);
-          const entry = players.get(key) || { name: player.name, avatar: player.avatar, matches: 0, wins: 0 };
+          const entry = players.get(key) || { name: player.name, avatar: matchPlayerAvatar(player, recordMembers(record)), matches: 0, wins: 0 };
           entry.matches += 1;
           if (winnerKeys.has(key)) entry.wins += 1;
           players.set(key, entry);
@@ -4002,6 +4053,47 @@
     migrateGroups();
     initCloud();
     adoptExistingAvatars();
+    compactStoredMatches();
+
+    const BACKFILL_IMPORTED_KEY = "local-card-game-scorekeeper-backfill-imported-v1";
+
+    // Adds matches recorded on paper to the group with the same players. Each id is imported only once,
+    // so deleting a backfilled match later is respected.
+    window.scorekeeperImportBackfill = (payload) => {
+      let imported;
+      try {
+        imported = new Set(JSON.parse(localStorage.getItem(BACKFILL_IMPORTED_KEY) || "[]"));
+      } catch {
+        imported = new Set();
+      }
+      const known = new Set([...archive, ...trash].map((record) => record.id));
+      let added = 0;
+      (payload?.matches || []).forEach((match) => {
+        if (imported.has(match.id)) return;
+        if (known.has(match.id)) {
+          imported.add(match.id);
+          return;
+        }
+        const lineup = lineupKey(match.snapshot.players);
+        const group = liveGroups().find((entry) => lineupKey(entry.members) === lineup);
+        if (!group) return;
+        const record = JSON.parse(JSON.stringify(match));
+        record.groupId = group.id;
+        record.backfilled = true;
+        Object.assign(record.snapshot, { groupId: group.id, archiveId: record.id, backfilled: true });
+        archive.push(record);
+        imported.add(match.id);
+        added += 1;
+      });
+      if (added) {
+        const when = (record) => String(record.completedAt || record.snapshot?.completedAt || "");
+        archive.sort((a, b) => when(b).localeCompare(when(a)));
+        saveArchive();
+      }
+      localStorage.setItem(BACKFILL_IMPORTED_KEY, JSON.stringify([...imported]));
+      if (added) refreshVisibleList();
+      return added;
+    };
     applyPreferredSetupAvatars();
     renderNameFields();
     showHome();
