@@ -952,6 +952,15 @@
               <button id="signOutButton" class="btn hidden" type="button">Sign out</button>
             </div>
           </div>
+          <div class="cloud-card card">
+            <h3>Backup</h3>
+            <p class="muted small">Save every group and match to a file you can email, keep in Files, or send on WhatsApp. Importing a backup only adds what’s missing; it never deletes anything.</p>
+            <div class="actions">
+              <button id="exportBackup" class="btn" type="button">Export backup</button>
+              <button id="importBackupButton" class="btn" type="button">Import backup</button>
+              <input id="importBackupInput" class="hidden" type="file" accept="application/json,.json" />
+            </div>
+          </div>
           <div class="stats-grid">
             <div class="stat-card card">
               <div id="groupsCount" class="stat-value">0</div>
@@ -4056,6 +4065,134 @@
     compactStoredMatches();
 
     const BACKFILL_IMPORTED_KEY = "local-card-game-scorekeeper-backfill-imported-v1";
+
+    // ---------- Backup file (export / import) ----------
+    const STORAGE_PREFIX = "local-card-game-scorekeeper-";
+
+    async function exportBackup() {
+      if (state.players.length) save();
+      const data = {};
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key.startsWith(STORAGE_PREFIX) && key !== SYNC_META_KEY && key !== SHARED_KEY) data[key] = localStorage.getItem(key);
+      }
+      const content = JSON.stringify({ app: "scorekeeper", version: 1, exportedAt: new Date().toISOString(), data });
+      const filename = `scorekeeper-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      if (window.webkit?.messageHandlers?.scorekeeperShare) {
+        window.webkit.messageHandlers.scorekeeperShare.postMessage({ filename, content });
+        return;
+      }
+      const file = new File([content], filename, { type: "application/json" });
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: "Scorekeeper backup" });
+          return;
+        } catch (error) {
+          if (error.name === "AbortError") return;
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    // Merges a backup into this device: adds missing groups, matches, unfinished matches and photos; removes nothing.
+    function importBackup(text) {
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = null;
+      }
+      if (payload?.app !== "scorekeeper" || !payload.data || typeof payload.data !== "object") {
+        window.alert("This file isn’t a Scorekeeper backup.");
+        return;
+      }
+      const read = (key, fallback) => {
+        try {
+          return JSON.parse(payload.data[key] ?? "null") ?? fallback;
+        } catch {
+          return fallback;
+        }
+      };
+      const backupGroups = read(GROUPS_KEY, []);
+      const backupArchive = read(ARCHIVE_KEY, []);
+      const backupTrash = read(TRASH_KEY, []);
+      const backupActive = read(ACTIVE_BY_GROUP_KEY, {});
+      const backupState = read(STORAGE_KEY, null);
+      const backupPhotos = read(AVATAR_PREFERENCES_KEY, {});
+      const backupImported = read(BACKFILL_IMPORTED_KEY, []);
+
+      Object.entries(backupPhotos).forEach(([key, avatar]) => {
+        if (!avatarPreferences[key] && avatar) avatarPreferences[key] = avatar;
+      });
+      localStorage.setItem(AVATAR_PREFERENCES_KEY, JSON.stringify(avatarPreferences));
+
+      let addedGroups = 0;
+      const liveNames = new Set(liveGroups().map((group) => group.name.trim().toLocaleLowerCase()));
+      (Array.isArray(backupGroups) ? backupGroups : []).forEach((group) => {
+        if (!group?.id || groupById(group.id)) return;
+        const copy = JSON.parse(JSON.stringify(group));
+        if (!copy.deletedAt && liveNames.has(String(copy.name).trim().toLocaleLowerCase())) copy.name = `${copy.name} (restored)`;
+        groups.push(copy);
+        if (!copy.deletedAt) liveNames.add(copy.name.trim().toLocaleLowerCase());
+        addedGroups += 1;
+      });
+
+      let addedMatches = 0;
+      const knownIds = new Set([...archive, ...trash].map((record) => record.id));
+      [[backupArchive, archive], [backupTrash, trash]].forEach(([source, target]) => {
+        (Array.isArray(source) ? source : []).forEach((record) => {
+          if (!record?.id || !record.snapshot || knownIds.has(record.id)) return;
+          const copy = JSON.parse(JSON.stringify(record));
+          if (copy.kind !== "unfinished") compactRecord(copy);
+          target.push(copy);
+          knownIds.add(copy.id);
+          addedMatches += 1;
+        });
+      });
+      const when = (record) => String(record.completedAt || record.snapshot?.completedAt || "");
+      archive.sort((a, b) => when(b).localeCompare(when(a)));
+
+      let addedUnfinished = 0;
+      const unfinished = Object.entries(backupActive && typeof backupActive === "object" ? backupActive : {});
+      if (isInProgress(backupState) && backupState.groupId) unfinished.push([backupState.groupId, backupState]);
+      unfinished.forEach(([groupId, match]) => {
+        if (!isInProgress(match) || !groupById(groupId) || groupActiveMatch(groupId)) return;
+        activeByGroup[groupId] = JSON.parse(JSON.stringify(match));
+        addedUnfinished += 1;
+      });
+
+      const imported = new Set(JSON.parse(localStorage.getItem(BACKFILL_IMPORTED_KEY) || "[]"));
+      (Array.isArray(backupImported) ? backupImported : []).forEach((id) => imported.add(id));
+      localStorage.setItem(BACKFILL_IMPORTED_KEY, JSON.stringify([...imported]));
+
+      saveGroups();
+      saveArchive();
+      saveTrash();
+      saveActiveByGroup();
+      showHome();
+      const parts = [];
+      if (addedGroups) parts.push(`${addedGroups} group${addedGroups === 1 ? "" : "s"}`);
+      if (addedMatches) parts.push(`${addedMatches} match${addedMatches === 1 ? "" : "es"}`);
+      if (addedUnfinished) parts.push(`${addedUnfinished} unfinished match${addedUnfinished === 1 ? "" : "es"}`);
+      window.alert(parts.length
+        ? `Restored ${parts.join(", ")}. Nothing on this device was removed.`
+        : "Everything in this backup is already on this device.");
+    }
+
+    $("exportBackup").addEventListener("click", () => exportBackup());
+    $("importBackupButton").addEventListener("click", () => $("importBackupInput").click());
+    $("importBackupInput").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (file) importBackup(await file.text());
+    });
 
     // Adds matches recorded on paper to the group with the same players. Each id is imported only once,
     // so deleting a backfilled match later is respected.
